@@ -1,0 +1,6 @@
+# Genere par le moteur Claude Code a chaque chargement d'un mod
+.claude-plugin/types/
+**/.claude-plugin/types/
+node_modules/
+*.bak
+.DS_Store
