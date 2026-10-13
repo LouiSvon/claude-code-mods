@@ -45,7 +45,7 @@ Dans une session `claude` d'un terminal :
 
 Réponds `y` à « Add marketplace? », puis choisis la portée. Un mod installé au niveau utilisateur se charge ensuite dans chaque session, y compris celles de l'app de bureau. La commande `/plugin install` elle-même n'existe pas dans l'onglet Code de l'app : installe depuis un terminal.
 
-> Le manifeste du marketplace passe `claude plugin validate`. L'installation depuis GitHub n'a pas encore été essayée sur une machine vierge.
+> Essayé depuis GitHub avec `claude plugin marketplace add LouiSvon/claude-code-mods` puis `claude plugin install task-board@claude-code-mods` (portée utilisateur) : le marketplace s'ajoute et le mod s'installe. Le rendu dans une conversation neuve de l'app de bureau reste à confirmer pour `task-board`.
 
 ### Essayer sans installer
 
