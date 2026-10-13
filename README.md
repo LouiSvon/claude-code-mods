@@ -52,10 +52,10 @@ Réponds `y` à « Add marketplace? », puis choisis la portée. Un mod install�
 ```bash
 git clone https://github.com/LouiSvon/claude-code-mods.git
 cd claude-code-mods
-CLAUDE_CODE_PLUGIN_DIRS="$PWD/plugins/task-board:$PWD/plugins/statusline-app" claude
+claude --plugin-dir "$PWD/plugins/task-board" --plugin-dir "$PWD/plugins/statusline-app"
 ```
 
-Cette variable (ou `claude --plugin-dir <dossier>`) charge un mod depuis son dossier et le recharge quand ses fichiers changent.
+`--plugin-dir` charge un mod depuis son dossier pour la durée de la session. Il est répétable : un drapeau par mod.
 
 ## Comment ça marche
 
