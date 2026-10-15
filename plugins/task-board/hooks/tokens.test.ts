@@ -23,9 +23,12 @@ test('fromUsage : le cache lu est compte a part, un champ absent vaut zero', () 
   })
 })
 
-test('projectKey garde la racine entiere : deux depots du meme nom restent distincts', () => {
-  expect(projectKey('/Users/a/dev/demo')).not.toBe(projectKey('/Users/b/dev/demo'))
-  expect(projectKey('/Users/a/dev/demo')).toBe('-Users-a-dev-demo')
+test('projectKey : deux racines differentes ne partagent jamais de dossier', () => {
+  const roots = ['/Users/a/dev/demo', '/Users/b/dev/demo', '/u/dev/b-c', '/u/dev/b/c', '/u/dev/b c', '/p/été', '/p/ôté', '/a_b', '/a/b']
+  expect(new Set(roots.map(projectKey)).size).toBe(roots.length)
+  expect(projectKey('/Users/a/dev/demo')).toBe(projectKey('/Users/a/dev/demo'))
+  expect(projectKey('/Users/a/dev/demo')).toMatch(/^demo-[0-9a-f]{16}$/)
+  expect(projectKey('/x/' + 'n'.repeat(300)).length).toBeLessThan(70)
   expect(folderName('/Users/a/dev/demo')).toBe('demo')
   expect(isScratch('/x/Claude/scratch-workspaces/a/b')).toBe(true)
   expect(isScratch('/Users/a/dev/demo')).toBe(false)

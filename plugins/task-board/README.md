@@ -36,12 +36,14 @@ Barre de tâches au-dessus de la saisie de Claude Code : un mot, un état, un mo
 La ligne `◆ TOKENS` cumule chaque réponse du modèle (agent principal et sous-agents ensemble, y compris celles d'un tour interrompu ensuite) et la requête de résumé d'une compaction. `cache` est la lecture du cache de prompt, comptée à part : elle se chiffre en millions et masquerait le reste.
 
 - **Session** : repart de son fichier à la reprise (`--resume`), de zéro après `/clear`.
-- **Projet** : somme de toutes les sessions du même dossier (racine complète, deux dépôts du même nom restent distincts). Les autres sessions sont relues à chaque fin de tour.
-- Hors dossier de projet (espace temporaire de l'app) : la session seule, rien n'est écrit.
+- **Projet** : somme de toutes les sessions du même dossier. Le dossier de stockage porte le nom du projet suivi d'une empreinte de la racine entière : deux dépôts du même nom, ou à un caractère près, ne se mélangent jamais. Les autres sessions sont relues à chaque fin de tour.
+- **Changement de dossier** (`/cd`) : le compteur repart de zéro pour le nouveau projet ; ce qui a été dépensé avant reste dans l'ancien.
+- **Hors dossier de projet** (espace temporaire de l'app) : la session seule, rien n'est écrit. Sa reprise repart donc de zéro.
+- **Limite** : une réponse coupée en plein flux (arrêt pendant que le modèle écrit) peut ne pas être comptée ; le moteur ne rapporte alors pas toujours ses tokens.
 
 ## Données
 
-Le seul fichier écrit est le compteur, un par session : `~/.claude/mod-tokens/<racine-du-projet>/<id-de-session>.json` (`{input, output, cache, updatedAt}`, des nombres, aucun texte de conversation). Rien ne quitte ta machine. Pour repartir de zéro, supprime ce dossier.
+Le seul fichier écrit est le compteur, un par session : `~/.claude/mod-tokens/<projet>-<empreinte>/<id-de-session>.json` (`{input, output, cache, updatedAt}`, des nombres, aucun texte de conversation). Rien ne quitte ta machine. Pour repartir de zéro, supprime ce dossier.
 
 ## Tests
 
@@ -49,4 +51,4 @@ Le seul fichier écrit est le compteur, un par session : `~/.claude/mod-tokens/<
 claude plugin test .
 ```
 
-Dix-sept tests : les cinq de la barre (attente, terminé puis en cours, tâche principale visible, décalage, agent relancé) et douze sur les tokens (formatage, cumul par agent, total projet avec fichier abîmé ignoré, reprise, `/clear`, tour interrompu, compaction, hors projet). Disque et environnement sont simulés : aucun test n'écrit dans ton `~/.claude`.
+Dix-neuf tests : les cinq de la barre (attente, terminé puis en cours, tâche principale visible, décalage, agent relancé) et quatorze sur les tokens (formatage, clés de projet sans collision, cumul par agent, total projet avec fichier abîmé ignoré, reprise, `/clear`, réponses simultanées, changement de dossier, tour interrompu, compaction, hors projet). Disque et environnement sont simulés : aucun test n'écrit dans ton `~/.claude`.

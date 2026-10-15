@@ -44,8 +44,20 @@ export const dur = (ms: number | undefined): string => {
   return `${Math.floor(s / 60)}min${String(s % 60).padStart(2, '0')}`
 }
 
-// Dossier du projet : la racine entiere (deux depots du meme nom ne se melangent pas).
-export const projectKey = (root: string): string => root.replace(/[^A-Za-z0-9]+/g, '-')
+// Nom du dossier de stockage : le nom du projet, lisible, puis un empreinte de la racine entiere.
+// Deux racines differentes ne partagent jamais de dossier, meme si elles ne different que par
+// un caractere (`/b-c`, `/b/c`, `/b c`) : le nom seul ne distingue pas.
+export const projectKey = (root: string): string => {
+  let a = 5381
+  let b = 52711
+  for (let i = 0; i < root.length; i++) {
+    const c = root.charCodeAt(i)
+    a = (Math.imul(a, 33) ^ c) >>> 0
+    b = (Math.imul(b, 31) + c + i) >>> 0
+  }
+  const name = (root.split('/').filter(Boolean).pop() ?? 'racine').replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 40)
+  return `${name}-${a.toString(16).padStart(8, '0')}${b.toString(16).padStart(8, '0')}`
+}
 
 export const folderName = (root: string): string => root.split('/').filter(Boolean).pop() ?? root
 

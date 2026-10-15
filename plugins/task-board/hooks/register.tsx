@@ -45,13 +45,24 @@ const cap = (list: Row[]) => {
 
 let model = ''
 let effort = ''
-// Identifiant de session vu en dernier : /clear en change sans relancer session.start.
+// Session et dossier vus en dernier : /clear change l'id et /cd la racine, sans relancer session.start.
 let sid = ''
+let sroot = ''
+// Ou ecrire le compteur de la session courante ; fige avec sid/sroot pour ne jamais deriver en cours de route.
+let current: { dir: string; id: string; name: string } | null = null
+
+// Les mises a jour du compteur passent une par une : deux reponses qui finissent en meme temps
+// ne se marchent pas dessus (surtout autour d'un /clear).
+let chain: Promise<unknown> = Promise.resolve()
+const serial = <T,>(fn: () => Promise<T>): Promise<T> => {
+  const run = chain.then(fn, fn)
+  chain = run.then(() => undefined, () => undefined)
+  return run
+}
 
 // Un fichier par session sous ~/.claude/mod-tokens/<projet>/ : aucune ecriture partagee,
 // le total du projet est la somme des fichiers.
-const where = async ($: any) => {
-  const root: string = await $.session.root()
+const where = async ($: any, root: string) => {
   const home: string | undefined = await $.env.get('HOME')
   if (isScratch(root) || !home) return null
   return { dir: `${home}/.claude/mod-tokens/${projectKey(root)}`, name: folderName(root) }
@@ -82,35 +93,39 @@ const scanOthers = async ($: any, dir: string, id: string) => {
   return { others, sessions }
 }
 
-// Se cale sur la session courante : relit son fichier (reprise) et les autres sessions du projet.
+// Se cale sur la session et le dossier courants : relit son fichier (reprise) et les autres sessions du projet.
+// Un changement de dossier repart de zero pour le nouveau projet : les tokens deja comptes restent dans l'ancien.
+// A appeler dans serial().
 const adopt = async ($: any, force = false) => {
   const id: string = await $.session.id()
-  if (id === sid && !force) return
+  const root: string = await $.session.root()
+  if (id === sid && root === sroot && !force) return
   sid = id
-  const place = await where($)
+  sroot = root
+  const place = await where($, root)
+  current = place === null ? null : { ...place, id }
   let session = ZERO
   let found = { others: ZERO, sessions: 0 }
-  if (place !== null) {
+  if (current !== null) {
     try {
-      session = parseTotals(await $.fs.read(`${place.dir}/${id}.json`)) ?? ZERO
+      session = parseTotals(await $.fs.read(`${current.dir}/${id}.json`)) ?? ZERO
     } catch {
       // premiere fois pour cette session
     }
-    found = await scanOthers($, place.dir, id)
+    found = await scanOthers($, current.dir, id)
   }
   await update($, tally, () => ({
     session,
     others: found.others,
     sessions: found.sessions,
-    project: place?.name ?? '',
+    project: current?.name ?? '',
   }))
 }
 
 const save = async ($: any, session: Totals) => {
   try {
-    const place = await where($)
-    if (place === null) return
-    await $.fs.write(`${place.dir}/${sid}.json`, JSON.stringify({ ...session, updatedAt: await $.clock.now() }))
+    if (current === null) return
+    await $.fs.write(`${current.dir}/${current.id}.json`, JSON.stringify({ ...session, updatedAt: await $.clock.now() }))
   } catch {
     // le compteur est un confort : un disque en echec ne doit pas casser un tour
   }
@@ -118,14 +133,26 @@ const save = async ($: any, session: Totals) => {
 
 const refreshOthers = async ($: any) => {
   try {
-    const place = await where($)
-    if (place === null) return
-    const found = await scanOthers($, place.dir, sid)
+    if (current === null) return
+    const found = await scanOthers($, current.dir, current.id)
     await update($, tally, t => ({ ...t, others: found.others, sessions: found.sessions }))
   } catch {
     // idem
   }
 }
+
+// Ajoute des tokens au compteur de la session (et a la ligne d'un agent, si on la connait).
+const spend = ($: any, spent: Totals, agent?: string) =>
+  serial(async () => {
+    try {
+      await adopt($)
+      if (agent !== undefined) await update($, rows, patch(agent, row => ({ usage: add(row.usage ?? ZERO, spent) })))
+      const t = await update($, tally, cur => ({ ...cur, session: add(cur.session, spent) }))
+      await save($, t.session)
+    } catch {
+      // le compteur est un confort
+    }
+  })
 
 const LOOK = {
   running: { color: BLUE, icon: '●', text: 'en cours' },
@@ -138,11 +165,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     // Une ancienne version epinglait une ligne de statut : un rechargement l'efface.
     $.ui.status(undefined)
-    try {
-      await adopt($, true)
-    } catch {
-      // sans compteur, la barre reste utile
-    }
+    await serial(() => adopt($, true)).catch(() => undefined)
 
     return next(e)
   })
@@ -239,14 +262,7 @@ export const register: Register = on => {
     // Source unique des tokens : chaque reponse du modele, y compris celle d'un tour interrompu ensuite.
     const spent = fromUsage(result.usage)
     if (spent.input + spent.output + spent.cache > 0) {
-      try {
-        await adopt($)
-        await update($, rows, patch(id, row => ({ usage: add(row.usage ?? ZERO, spent) })))
-        const t = await update($, tally, cur => ({ ...cur, session: add(cur.session, spent) }))
-        await save($, t.session)
-      } catch {
-        // idem
-      }
+      await spend($, spent, id)
     }
 
     return result
@@ -257,13 +273,7 @@ export const register: Register = on => {
     const result = await next(e)
     const spent = fromUsage('usage' in result ? result.usage : undefined)
     if (spent.input + spent.output + spent.cache > 0) {
-      try {
-        await adopt($)
-        const t = await update($, tally, cur => ({ ...cur, session: add(cur.session, spent) }))
-        await save($, t.session)
-      } catch {
-        // idem
-      }
+      await spend($, spent)
     }
 
     return result
@@ -281,7 +291,7 @@ export const register: Register = on => {
     const status: Row['status'] =
       e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'aborted' : 'error'
     await update($, rows, patch(id, () => ({ status, action: '', durationMs: e.durationMs })))
-    if (id === MAIN) await refreshOthers($)
+    if (id === MAIN) await serial(() => refreshOthers($))
 
     return next(e)
   })

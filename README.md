@@ -89,7 +89,7 @@ Chaque mod est un module de hooks, sans dépendance. Aucun n'envoie de donnée h
 
 ```bash
 claude plugin validate plugins/task-board
-claude plugin test plugins/task-board        # 17 tests
+claude plugin test plugins/task-board        # 19 tests
 claude plugin test plugins/statusline-app    # 5 tests
 ```
 

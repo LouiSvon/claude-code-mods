@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import { projectKey } from './tokens'
 
 const BAND = { component: 'AbovePrompt', props: {} } as const
 const show = ($: never) => ($ as never as { ui: { mount: (a: never) => Promise<any> } }).ui.mount({ plugin: 'task-board', surface: 'terminal', ...BAND } as never)
@@ -104,7 +105,8 @@ test('un agent relance apres le nettoyage du tour reapparait', async ($, on) => 
 // ---- compteur de tokens -------------------------------------------------------------------
 
 type Files = Record<string, string>
-const DIR = '/home/u/.claude/mod-tokens/-Users-a-dev-demo'
+const dirOf = (root: string) => `/home/u/.claude/mod-tokens/${projectKey(root)}`
+const DIR = dirOf('/Users/a/dev/demo')
 
 // Le disque, l'environnement et l'identite de session sont simules : rien n'ecrit dans le vrai ~/.claude.
 const world = (on: any, opts: { root?: string; id?: string; files?: Files } = {}) => {
@@ -112,15 +114,17 @@ const world = (on: any, opts: { root?: string; id?: string; files?: Files } = {}
   const usageOf: Record<string, any> = {}
   const writes: { path: string; text: string }[] = []
   let id = opts.id ?? 's1'
+  let root = opts.root ?? '/Users/a/dev/demo'
   on('session.id', () => ({ value: id }))
-  on('session.root', () => ({ value: opts.root ?? '/Users/a/dev/demo' }))
+  on('session.root', () => ({ value: root }))
   on('env.get', () => ({ value: '/home/u' }))
   on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
   on('ui.status', () => ({ value: undefined }) as never)
   on('clock.now', () => ({ value: 1000 }))
   on('fs.list', (_$: any, e: any) => {
-    if (e.path !== DIR) throw new Error('absent')
-    return { value: Object.keys(files).map(path => ({ name: path.split('/').pop(), kind: 'file', size: 1, mtimeMs: 0, isLink: false })) }
+    const mine = Object.keys(files).filter(p => p.startsWith(`${e.path}/`))
+    if (mine.length === 0) throw new Error('absent')
+    return { value: mine.map(path => ({ name: path.split('/').pop(), kind: 'file', size: 1, mtimeMs: 0, isLink: false })) }
   })
   on('fs.read', (_$: any, e: any) => {
     if (!(e.path in files)) throw new Error('absent')
@@ -142,7 +146,7 @@ const world = (on: any, opts: { root?: string; id?: string; files?: Files } = {}
     const u = usageOf[e.agentId ?? 'main']
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: u ?? null }
   })
-  return { files, usageOf, writes, setId: (v: string) => { id = v } }
+  return { files, usageOf, writes, setId: (v: string) => { id = v }, setRoot: (v: string) => { root = v } }
 }
 
 const use = (input: number, output: number, cache = 0) => ({
@@ -255,4 +259,36 @@ test('la requete de resume d une compaction compte aussi', async ($, on) => {
   await ($ as any).session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'x', toolUses: [] }] })
 
   expect(JSON.parse(w.files[`${DIR}/s1.json`])).toMatchObject({ input: 900, output: 80 })
+})
+
+test('un changement de dossier ne double pas les tokens dans deux projets', async ($, on) => {
+  const w = world(on)
+  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'terminal', isInteractive: true, source: 'startup' })
+  w.usageOf.main = use(50, 5)
+  await step($)
+  w.setRoot('/Users/a/dev/autre')
+  w.usageOf.main = use(7, 1)
+  await step($)
+
+  expect(JSON.parse(w.files[`${DIR}/s1.json`])).toMatchObject({ input: 50, output: 5 })
+  expect(JSON.parse(w.files[`${dirOf('/Users/a/dev/autre')}/s1.json`])).toMatchObject({ input: 7, output: 1 })
+  const ui = await show($ as never)
+  expect(await texts(ui)).toContain('autre')
+  await ui.unmount()
+})
+
+test('deux reponses simultanees apres /clear sont toutes deux comptees dans la nouvelle session', async ($, on) => {
+  const w = world(on)
+  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
+  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'terminal', isInteractive: true, source: 'startup' })
+  await spawn($, 'Alpha')
+  w.usageOf.main = use(100, 10)
+  await step($)
+  w.setId('s2')
+  w.usageOf.main = use(7, 3)
+  w.usageOf.a1 = use(20, 2)
+  await Promise.all([step($), step($, 'a1')])
+
+  expect(JSON.parse(w.files[`${DIR}/s1.json`])).toMatchObject({ input: 100, output: 10 })
+  expect(JSON.parse(w.files[`${DIR}/s2.json`])).toMatchObject({ input: 27, output: 5 })
 })
