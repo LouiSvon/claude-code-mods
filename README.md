@@ -31,7 +31,7 @@ Deux mods pour l'app Claude Code, qui rendent le travail des agents lisible d'un
 - **Un état en couleur** : `●` bleu en cours, `✔` vert terminé, `✖` rouge erreur, `■` gris arrêté.
 - **La hiérarchie se voit** : un sous-agent est décalé de trois colonnes avec un trait `└`, un agent lancé par un sous-agent d'autant de plus.
 - **Tokens** : une seule ligne `◆ TOKENS` pour la session (`↑` entrée, `↓` sortie, cache), plus le total du projet quand d'autres sessions existent ; les sous-agents gardent leurs propres chiffres.
-- **Panneau `/activite`** : tous les agents et un journal horodaté des outils (cible, durée, échecs), à part de la bande.
+- **Panneau d'activité** : étroit, ouvert à droite dans l'app de bureau (`/activite` sur un terminal). Un logo et une couleur par agent, la traînée de ses derniers outils, un journal horodaté (cible, durée, échecs).
 - **Ce que fait l'agent maintenant** : tant qu'une tâche tourne, deux lignes de détail : son objectif (`↳`) et l'outil du moment avec sa cible (`▸ Read hooks/app.ts`), l'étape et le nombre d'outils.
 - **Propre à chaque demande** : le tableau repart de zéro à chaque nouveau message, sauf les agents encore en cours. Un agent relancé plus tard retrouve sa ligne.
 
@@ -95,7 +95,7 @@ Chaque mod est un module de hooks, sans dépendance. Aucun n'envoie de donnée h
 
 ```bash
 claude plugin validate plugins/task-board
-claude plugin test plugins/task-board        # 24 tests
+claude plugin test plugins/task-board        # 27 tests
 claude plugin test plugins/statusline-app    # 5 tests
 ```
 

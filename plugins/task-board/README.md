@@ -37,10 +37,26 @@ Barre de tâches au-dessus de la saisie de Claude Code : un mot, un état, un mo
 
 ## Panneau d'activité
 
-`/activite` ouvre un panneau dédié (dans l'app de bureau, le panneau latéral) pour voir ce que fait Claude en détail, sans alourdir la bande :
+Sur l'app de bureau, un panneau étroit (44 colonnes) s'ouvre tout seul à droite et y reste, pour voir ce que fait Claude en détail sans alourdir la bande. Sur un terminal simple il s'ouvre à la demande avec `/activite` (il prendrait des lignes de la conversation). La même commande le rouvre après fermeture.
 
-- **Agents** : toutes les tâches, avec objectif (`↳`), outil du moment (`▸`), étape, nombre d'outils et tokens des sous-agents.
-- **Journal** : les 300 derniers événements, le plus récent en haut. Une ligne par demande (`── 14:03:09 ──`), par agent lancé (`⇢`), par outil (`▸` en cours, `✔` réussi, `✖` refusé ou en erreur, avec sa cible et sa durée) et par fin de tâche.
+```
+◆ ACTIVITÉ  ● 2  ✔ 1  14 outils
+🧠 Réponse  ● en cours
+   ↳ Optimise mes deux mods
+   ▸ Edit hooks/register.tsx
+   ● ● ● ● ● étape 4 · 7 outils
+   └ 🔭 Lister  ✔ terminé  4s · haiku
+      ↳ Lister les fichiers du dossier
+      ● ● ● étape 2 · 3 outils
+◆ JOURNAL
+14:03:09 🔭 ✔ Read src/app.ts  80ms
+14:03:08 🧠 ⇢ lance Lister
+── 14:03:05 ── Optimise mes deux mods
+```
+
+- **Un logo et une couleur par agent** : 🧠 la réponse principale, 🔭 Explore, 🧭 Plan, 🤖 general-purpose, 🔎 chercheur, 🔧 implementeur, 🧐 relecteur, 🎼 orchestrateur, 📘 claude-code-guide. Un agent d'un autre type reçoit un logo stable tiré de son identifiant. Le logo et la couleur se retrouvent dans la bande, la liste et le journal.
+- **Agents** : toutes les tâches (la bande en montre quatre), avec objectif (`↳`), outil du moment (`▸`), étape, nombre d'outils et tokens des sous-agents. Une rangée de points montre les dix derniers outils de l'agent : vert réussi, orange en cours, rouge refusé ou en erreur.
+- **Journal** : les 300 derniers événements, le plus récent en haut. Une ligne par demande (`── 14:03:09 ──`), par agent lancé (`⇢`), par outil (`▸` en cours, `✔`, `✖`, avec sa cible et sa durée) et par fin de tâche.
 - Le journal vit en mémoire de la session : il n'est pas écrit sur disque.
 
 ## Compteur de tokens
@@ -63,4 +79,4 @@ Le seul fichier écrit est le compteur, un par session : `~/.claude/mod-tokens/<
 claude plugin test .
 ```
 
-Vingt-quatre tests : les cinq de la barre (attente, terminé puis en cours, tâche principale visible, décalage, agent relancé) et dix-neuf sur les tokens, l'activité et le panneau (formatage, clés de projet sans collision, cumul par agent, total projet avec fichier abîmé ignoré, reprise, `/clear`, réponses simultanées, changement de dossier, tour interrompu, compaction, hors projet). Disque et environnement sont simulés : aucun test n'écrit dans ton `~/.claude`.
+Vingt-sept tests : les cinq de la barre (attente, terminé puis en cours, tâche principale visible, décalage, agent relancé) et vingt-deux sur les tokens, l'activité et le panneau (formatage, clés de projet sans collision, cumul par agent, total projet avec fichier abîmé ignoré, reprise, `/clear`, réponses simultanées, changement de dossier, tour interrompu, compaction, hors projet). Disque et environnement sont simulés : aucun test n'écrit dans ton `~/.claude`.

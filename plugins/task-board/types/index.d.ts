@@ -23,6 +23,8 @@ export type Entry = {
   id: string
   at: number
   who: string
+  agent: string
+  logo: string
   depth: number
   kind: 'prompt' | 'agent' | 'tool' | 'end'
   text: string

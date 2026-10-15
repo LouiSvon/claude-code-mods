@@ -142,13 +142,17 @@ const world = (on: any, opts: { root?: string; id?: string; files?: Files } = {}
   on('turn.start', (_$: any, e: any) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
   on('command.register', (_$: any, e: any) => ({ value: { command: e.name } }) as never)
-  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  const opens: any[] = []
+  on('ui.open', (_$: any, e: any) => {
+    opens.push(e)
+    return { value: { isPlaced: true } } as never
+  })
   on('session.compact', () => ({ messages: [{ role: 'user', text: 'resume', toolUses: [] }], usage: usageOf.compact }))
   on('turn.step', async function* (_$: any, e: any) {
     const u = usageOf[e.agentId ?? 'main']
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: u ?? null }
   })
-  return { files, usageOf, writes, setId: (v: string) => { id = v }, setRoot: (v: string) => { root = v } }
+  return { files, usageOf, writes, opens, setId: (v: string) => { id = v }, setRoot: (v: string) => { root = v } }
 }
 
 const use = (input: number, output: number, cache = 0) => ({
@@ -335,7 +339,9 @@ test('le panneau liste les agents et un journal : outils, cibles, durees, echecs
   const all = await texts(ui)
   expect(all).toContain('ACTIVITÉ')
   expect(all).toContain('2 outils')
-  expect(all).toContain('1 en échec')
+  expect(all).toContain('✖ 1')
+  expect(all).toContain('🔭')
+  expect(all).toContain('🧠')
   expect(all).toContain('Optimise mes mods')
   expect(all).toContain('lance Lister')
   expect(all).toContain('Read')
@@ -352,4 +358,19 @@ test('la commande /activite ouvre le panneau', async ($, on) => {
   const out = await ($ as any).command.run({ command: 'activite', args: '', origin: { kind: 'user' } })
 
   expect(JSON.stringify(out)).toContain('Panneau')
+})
+
+test('le panneau s ouvre seul, etroit, sur l app de bureau ; un terminal l ouvre a la demande', async ($, on) => {
+  const w = world(on)
+  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'desktop', isInteractive: true, source: 'startup' })
+  await new Promise(r => setTimeout(r, 20))
+  expect(w.opens.length).toBe(1)
+  expect(w.opens[0]).toMatchObject({ id: 'activite', columns: 44 })
+})
+
+test('sur un terminal simple, rien ne s ouvre au demarrage', async ($, on) => {
+  const w = world(on)
+  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'terminal', isInteractive: true, source: 'startup' })
+  await new Promise(r => setTimeout(r, 20))
+  expect(w.opens.length).toBe(0)
 })

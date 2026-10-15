@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Entry, Row, Tally } from '../types'
-import { clock, describe, span } from './activity'
+import { clock, describe, logoOf, span, tintOf } from './activity'
 import { ZERO, add, dur, fmt, folderName, fromUsage, isScratch, parseTotals, projectKey } from './tokens'
 
 const rows = atom({ plugin: 'task-board', key: 'rows' } as const, [])
@@ -11,6 +11,7 @@ const tally = atom({ plugin: 'task-board', key: 'tally' } as const, EMPTY)
 const journal = atom({ plugin: 'task-board', key: 'journal' } as const, [])
 const MAIN = 'main'
 const PANE = 'activite'
+const PANE_OPEN = { id: PANE, title: 'Activité', columns: 44, rows: 16 }
 const MAX_ROWS = 4
 const BLUE = '#4da3ff'
 const CYAN = '#4dd4d4'
@@ -51,7 +52,12 @@ const mark = ($: any, id: string, change: Partial<Entry>) =>
   update($, journal, list => list.map(x => (x.id === id ? { ...x, ...change } : x)))
 const whoOf = (list: Row[], id: string) => {
   const row = list.find(r => r.id === id)
-  return { who: row === undefined ? 'Agent' : label(row), depth: row?.depth ?? 0 }
+  return {
+    who: row === undefined ? 'Agent' : label(row),
+    depth: row?.depth ?? 0,
+    agent: id,
+    logo: logoOf(row?.type ?? 'principal', id),
+  }
 }
 
 let model = ''
@@ -173,46 +179,49 @@ const LOOK = {
 } as const
 
 // Une tache : une ligne ; tant qu'elle tourne, deux de plus (l'objectif, puis l'outil du moment).
-// `full` (panneau) garde l'objectif meme une fois la tache finie.
-const rowView = ({ Box, Text }: any, row: Row, full: boolean) => {
+// `full` (panneau) garde l'objectif meme une fois la tache finie et ajoute la traine des derniers outils.
+const rowView = ({ Box, Text }: any, row: Row, full: boolean, trail: Entry[] = []) => {
   const look = LOOK[row.status]
   const live = row.status === 'running'
+  const tint = tintOf(row.id)
   const extra = [live ? '' : dur(row.durationMs), modelName(row.model), row.effort].filter(p => p !== '').join(' · ')
   const used = row.usage ?? ZERO
   // La ligne principale n'affiche pas ses tokens : c'est le compteur de session.
   const spent = row.id !== MAIN && used.input + used.output > 0
-  // Les colonnes suivantes restent alignees malgre le decalage et le trait du sous-agent.
-  const lead = row.depth * 3 + (row.depth > 0 ? 2 : 0)
-  const pad = ' '.repeat(row.depth * 3 + 2)
+  const pad = ' '.repeat(row.depth * 3 + 3)
   const what = row.action === 'reflexion' || row.action === 'demarrage' ? 'réflexion…' : `${row.action} ${row.detail ?? ''}`.trim()
+  const tools = row.tools ?? 0
 
   return (
     <Box key={row.id} flexDirection="column">
       <Text wrap="truncate-end">
         {' '.repeat(row.depth * 3)}
         {row.depth > 0 && <Text dimColor>└ </Text>}
+        <Text>{logoOf(row.type, row.id)} </Text>
+        <Text color={tint} bold dimColor={row.status === 'done'}>{label(row).padEnd(9)}</Text>
         <Text color={look.color} bold>{look.icon} </Text>
-        <Text bold={live} dimColor={row.status === 'done'}>{label(row).padEnd(Math.max(6, 13 - lead))}</Text>
-        <Text color={look.color}>{look.text.padEnd(9)}</Text>
+        <Text color={look.color}>{look.text.padEnd(8)}</Text>
         {spent && <Text color={CYAN}>{`↑${fmt(used.input)} ↓${fmt(used.output)}  `}</Text>}
         <Text dimColor>{extra}</Text>
       </Text>
       {(live || full) && <Text wrap="truncate-end" dimColor>{pad}↳ {row.goal}</Text>}
-      {live && (
+      {live && <Text wrap="truncate-end" color={ORANGE}>{pad}▸ {what}</Text>}
+      {(live || (full && trail.length > 0)) && (
         <Text wrap="truncate-end">
           <Text dimColor>{pad}</Text>
-          <Text color={ORANGE}>▸ {what}</Text>
-          <Text dimColor>{`  · étape ${row.steps}${(row.tools ?? 0) > 0 ? ` · ${row.tools} outil${row.tools === 1 ? '' : 's'}` : ''}`}</Text>
+          {trail.map(x => (
+            <Text key={x.id} color={x.state === 'err' ? 'error' : x.state === 'ok' ? 'success' : ORANGE}>● </Text>
+          ))}
+          <Text dimColor>{`étape ${row.steps}${tools > 0 ? ` · ${tools} outil${tools === 1 ? '' : 's'}` : ''}`}</Text>
         </Text>
       )}
     </Box>
   )
 }
 
-// Une ligne du journal : l'heure, qui, ce qui se passe, combien de temps.
+// Une ligne du journal : l'heure, le logo de l'agent, ce qui se passe, combien de temps.
 const entryView = ({ Text }: any, x: Entry) => {
   const time = clock(x.at)
-  const who = x.who.padEnd(11)
   if (x.kind === 'prompt') {
     return (
       <Text key={x.id} wrap="truncate-end">
@@ -225,10 +234,10 @@ const entryView = ({ Text }: any, x: Entry) => {
   const icon = x.kind === 'tool' ? (x.state === 'run' ? '▸' : x.state === 'ok' ? '✔' : '✖') : x.kind === 'agent' ? '⇢' : x.state === 'err' ? '✖' : '■'
   return (
     <Text key={x.id} wrap="truncate-end">
-      <Text dimColor>{time}  </Text>
-      <Text color={x.depth > 0 ? VIOLET : BLUE}>{x.depth > 0 ? '└ ' : ''}{who}</Text>
+      <Text dimColor>{time} </Text>
+      <Text>{x.logo} </Text>
       <Text color={color}>{icon} </Text>
-      <Text bold={x.kind === 'tool'}>{x.text}</Text>
+      <Text color={x.kind === 'tool' ? undefined : tintOf(x.agent)} bold={x.kind === 'tool'}>{x.text}</Text>
       {x.detail !== '' && <Text dimColor> {x.detail}</Text>}
       {x.ms !== undefined && <Text dimColor>{`  ${span(x.ms)}`}</Text>}
     </Text>
@@ -243,6 +252,8 @@ export const register: Register = on => {
     await $.command
       .register({ name: 'activite', description: "Ouvre le panneau d'activité des agents (outils, étapes, journal)" })
       .catch(() => undefined)
+    // Sur l'app de bureau le panneau reste ouvert, etroit, a droite ; un terminal simple l'ouvre a la demande.
+    if (e.surface !== 'terminal') void $.ui.open(PANE_OPEN).catch(() => undefined)
 
     return next(e)
   })
@@ -266,7 +277,7 @@ export const register: Register = on => {
     ])
     await serial(() => refreshOthers($))
     const at = await $.clock.now()
-    await note($, { id: `p${at}`, at, who: 'Réponse', depth: 0, kind: 'prompt', text: 'demande', detail: short(e.text || 'suite', 160), state: 'ok' })
+    await note($, { id: `p${at}`, at, who: 'Réponse', agent: MAIN, logo: logoOf('principal', MAIN), depth: 0, kind: 'prompt', text: 'demande', detail: short(e.text || 'suite', 160), state: 'ok' })
 
     return next(e)
   })
@@ -292,7 +303,7 @@ export const register: Register = on => {
     })
     const at = await $.clock.now()
     const parent = whoOf(await read($, rows), e.parentAgentId ?? MAIN)
-    await note($, { id: `s${started.agentId}`, at, who: parent.who, depth: parent.depth, kind: 'agent', text: `lance ${label(row)}`, detail: row.goal, state: 'ok' })
+    await note($, { id: `s${started.agentId}`, at, ...parent, kind: 'agent', text: `lance ${label(row)}`, detail: row.goal, state: 'ok' })
 
     return started
   })
@@ -369,7 +380,7 @@ export const register: Register = on => {
     const at = await $.clock.now()
     const key = e.tool_use_id ?? `t${at}${e.tool}`
     const who = whoOf(await read($, rows), id)
-    await note($, { id: key, at, who: who.who, depth: who.depth, kind: 'tool', text: e.tool, detail, state: 'run' })
+    await note($, { id: key, at, ...who, kind: 'tool', text: e.tool, detail, state: 'run' })
 
     // Le journal garde la duree et l'issue de l'outil ; une erreur ou un refus se voit en rouge.
     try {
@@ -393,7 +404,7 @@ export const register: Register = on => {
     const at = await $.clock.now()
     const who = whoOf(await read($, rows), id)
     const words = status === 'done' ? 'terminé' : status === 'aborted' ? 'arrêté' : 'erreur'
-    await note($, { id: `e${at}${id}`, at, who: who.who, depth: who.depth, kind: 'end', text: words, detail: '', state: status === 'done' ? 'ok' : 'err', ms: e.durationMs })
+    await note($, { id: `e${at}${id}`, at, ...who, kind: 'end', text: words, detail: '', state: status === 'done' ? 'ok' : 'err', ms: e.durationMs })
 
     return next(e)
   })
@@ -447,7 +458,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'activite' }, async $ => {
-    const placed = await $.ui.open({ id: PANE, title: 'Activité' })
+    const placed = await $.ui.open(PANE_OPEN)
 
     return { text: placed.isPlaced ? "Panneau d'activité ouvert." : "Ce terminal n'affiche pas de panneau ici." }
   })
@@ -457,22 +468,28 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     const list = await read($, rows)
     const log = await read($, journal)
-    const running = list.filter(r => r.status === 'running').length
+    const count = (st: Row['status']) => list.filter(r => r.status === st).length
+    const running = count('running')
+    const done = count('done')
     const tools = log.filter(x => x.kind === 'tool').length
     const failed = log.filter(x => x.kind === 'tool' && x.state === 'err').length
     // Les lignes restantes apres l'en-tete et les agents : le journal s'adapte a la hauteur du panneau.
-    const used = 3 + list.reduce((n, r) => n + 1 + 1 + (r.status === 'running' ? 1 : 0), 0)
+    const used = 3 + list.reduce((n, r) => n + 2 + (r.status === 'running' ? 2 : 1), 0)
     const room = Math.max(4, (e.viewport?.rows ?? 30) - used - 3)
 
     return (
       <Box flexDirection="column">
         <Text wrap="truncate-end">
           <Text color={BLUE} bold>◆ ACTIVITÉ</Text>
-          <Text dimColor>   {running} en cours · {tools} outil{tools > 1 ? 's' : ''}</Text>
-          {failed > 0 && <Text color="error">   ✖ {failed} en échec</Text>}
+          {running > 0 && <Text color={BLUE} bold>  ● {running}</Text>}
+          {done > 0 && <Text color="success">  ✔ {done}</Text>}
+          {failed > 0 && <Text color="error">  ✖ {failed}</Text>}
+          <Text dimColor>  {tools} outil{tools > 1 ? 's' : ''}</Text>
         </Text>
         {list.length === 0 && <Text dimColor>Aucune tâche pour l'instant.</Text>}
-        {list.map(row => rowView({ Box, Text }, row, true))}
+        {list.map(row =>
+          rowView({ Box, Text }, row, true, log.filter(x => x.kind === 'tool' && x.agent === row.id).slice(-10)),
+        )}
         <Text color={VIOLET} bold>◆ JOURNAL</Text>
         {log.length === 0 && <Text dimColor>Rien pour l'instant.</Text>}
         {log

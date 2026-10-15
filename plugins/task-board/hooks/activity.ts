@@ -38,3 +38,30 @@ export const span = (ms: number | undefined): string => {
   const s = Math.round(ms / 1000)
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}min${String(s % 60).padStart(2, '0')}`
 }
+
+// Le logo d'un agent d'apres son type ; un type inconnu prend un logo stable tire de son identifiant.
+const LOGOS: Record<string, string> = {
+  principal: '🧠',
+  Explore: '🔭',
+  Plan: '🧭',
+  'general-purpose': '🤖',
+  chercheur: '🔎',
+  implementeur: '🔧',
+  relecteur: '🧐',
+  orchestrateur: '🎼',
+  'claude-code-guide': '📘',
+  'statusline-setup': '📟',
+}
+const SPARE = ['🐙', '🦊', '🐝', '🦉', '🐳', '🦄']
+
+const hash = (text: string) => {
+  let h = 0
+  for (let i = 0; i < text.length; i++) h = (Math.imul(h, 31) + text.charCodeAt(i)) >>> 0
+  return h
+}
+
+export const logoOf = (type: string, id: string): string => LOGOS[type] ?? SPARE[hash(id) % SPARE.length]!
+
+// Une couleur par agent : on reconnait d'un coup d'oeil qui fait quoi, dans la liste comme dans le journal.
+const TINTS = ['#b08cff', '#4dd4d4', '#ff9f43', '#ff7ab2', '#8fd36a', '#f2d45c']
+export const tintOf = (id: string): string => (id === 'main' ? '#4da3ff' : TINTS[hash(id) % TINTS.length]!)
