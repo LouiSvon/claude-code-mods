@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { clock, describe, logoOf, span, tintOf } from './activity'
+import { clock, complete, describe, logoOf, span, tintOf } from './activity'
 
 test('describe : la cible de l outil en quelques mots', () => {
   expect(describe({ tool: 'Read', file_path: '/Users/a/dev/demo/src/app.ts' })).toBe('src/app.ts')
@@ -24,4 +24,14 @@ test('logo et couleur : connus par type, stables pour un agent inconnu', () => {
   expect(tintOf('main')).toBe('#4da3ff')
   expect(tintOf('a1')).toBe(tintOf('a1'))
   expect(tintOf('a1')).toMatch(/^#[0-9a-f]{6}$/)
+})
+
+test('complete : une ancienne entree du journal ne fait plus planter le rendu', () => {
+  const old = complete({ id: 'x', kind: 'end' } as { agent?: string; logo?: string; detail?: string; text?: string })
+  expect(old.agent).toBe('main')
+  expect(old.logo).toBe('🧠')
+  expect(() => tintOf(old.agent)).not.toThrow()
+  expect(complete({ agent: 'a1', logo: '🔭', detail: 'd', text: 't' })).toEqual({ agent: 'a1', logo: '🔭', detail: 'd', text: 't' })
+  // la cause du panneau vide : sans garde, tintOf(undefined) leve une erreur
+  expect(() => tintOf(undefined as never)).toThrow()
 })

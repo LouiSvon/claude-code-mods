@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Entry, Row, Tally } from '../types'
-import { clock, describe, logoOf, span, tintOf } from './activity'
+import { clock, complete, describe, logoOf, span, tintOf } from './activity'
 import { ZERO, add, dur, fmt, folderName, fromUsage, isScratch, parseTotals, projectKey } from './tokens'
 
 const rows = atom({ plugin: 'task-board', key: 'rows' } as const, [])
@@ -220,7 +220,8 @@ const rowView = ({ Box, Text }: any, row: Row, full: boolean, trail: Entry[] = [
 }
 
 // Une ligne du journal : l'heure, le logo de l'agent, ce qui se passe, combien de temps.
-const entryView = ({ Text }: any, x: Entry) => {
+const entryView = ({ Text }: any, raw: Entry) => {
+  const x: Entry = complete(raw)
   const time = clock(x.at)
   if (x.kind === 'prompt') {
     return (
@@ -466,37 +467,42 @@ export const register: Register = on => {
   // Le panneau : tous les agents avec leur detail, puis le journal, le plus recent en haut.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     const { Box, Text } = $.ui.resolve(e)
-    const list = await read($, rows)
-    const log = await read($, journal)
-    const count = (st: Row['status']) => list.filter(r => r.status === st).length
-    const running = count('running')
-    const done = count('done')
-    const tools = log.filter(x => x.kind === 'tool').length
-    const failed = log.filter(x => x.kind === 'tool' && x.state === 'err').length
-    // Les lignes restantes apres l'en-tete et les agents : le journal s'adapte a la hauteur du panneau.
-    const used = 3 + list.reduce((n, r) => n + 2 + (r.status === 'running' ? 2 : 1), 0)
-    const room = Math.max(4, (e.viewport?.rows ?? 30) - used - 3)
+    try {
+      const list = await read($, rows)
+      const log = await read($, journal)
+      const count = (st: Row['status']) => list.filter(r => r.status === st).length
+      const running = count('running')
+      const done = count('done')
+      const tools = log.filter(x => x.kind === 'tool').length
+      const failed = log.filter(x => x.kind === 'tool' && x.state === 'err').length
+      // Les lignes restantes apres l'en-tete et les agents : le journal s'adapte a la hauteur du panneau.
+      const used = 3 + list.reduce((n, r) => n + 2 + (r.status === 'running' ? 2 : 1), 0)
+      const room = Math.max(4, (e.viewport?.rows ?? 30) - used - 3)
 
-    return (
-      <Box flexDirection="column">
-        <Text wrap="truncate-end">
-          <Text color={BLUE} bold>◆ ACTIVITÉ</Text>
-          {running > 0 && <Text color={BLUE} bold>  ● {running}</Text>}
-          {done > 0 && <Text color="success">  ✔ {done}</Text>}
-          {failed > 0 && <Text color="error">  ✖ {failed}</Text>}
-          <Text dimColor>  {tools} outil{tools > 1 ? 's' : ''}</Text>
-        </Text>
-        {list.length === 0 && <Text dimColor>Aucune tâche pour l'instant.</Text>}
-        {list.map(row =>
-          rowView({ Box, Text }, row, true, log.filter(x => x.kind === 'tool' && x.agent === row.id).slice(-10)),
-        )}
-        <Text color={VIOLET} bold>◆ JOURNAL</Text>
-        {log.length === 0 && <Text dimColor>Rien pour l'instant.</Text>}
-        {log
-          .slice(-room)
-          .reverse()
-          .map(x => entryView({ Text }, x))}
-      </Box>
-    )
+      return (
+        <Box flexDirection="column">
+          <Text wrap="truncate-end">
+            <Text color={BLUE} bold>◆ ACTIVITÉ</Text>
+            {running > 0 && <Text color={BLUE} bold>  ● {running}</Text>}
+            {done > 0 && <Text color="success">  ✔ {done}</Text>}
+            {failed > 0 && <Text color="error">  ✖ {failed}</Text>}
+            <Text dimColor>  {tools} outil{tools > 1 ? 's' : ''}</Text>
+          </Text>
+          {list.length === 0 && <Text dimColor>Aucune tâche pour l'instant.</Text>}
+          {list.map(row =>
+            rowView({ Box, Text }, row, true, log.filter(x => x.kind === 'tool' && x.agent === row.id).slice(-10)),
+          )}
+          <Text color={VIOLET} bold>◆ JOURNAL</Text>
+          {log.length === 0 && <Text dimColor>Rien pour l'instant.</Text>}
+          {log
+            .slice(-room)
+            .reverse()
+            .map(x => entryView({ Text }, x))}
+        </Box>
+      )
+    } catch (err) {
+      // Un cadre vide ne dit rien : on montre la cause.
+      return <Text color="error" wrap="wrap">Erreur d'affichage : {String(err)}</Text>
+    }
   })
 }

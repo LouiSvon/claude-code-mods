@@ -374,3 +374,25 @@ test('sur un terminal simple, rien ne s ouvre au demarrage', async ($, on) => {
   await new Promise(r => setTimeout(r, 20))
   expect(w.opens.length).toBe(0)
 })
+
+test('le panneau se dessine aussi sur la surface desktop, avec des props de panneau reelles', async ($, on) => {
+  world(on)
+  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
+  on('tool.call', () => ({ ref: 'r', result: {}, text: '' }) as never)
+  await ($ as any).turn.start({ text: 'demande', turnId: 't' })
+  await spawn($, 'Explorer')
+  await ($ as any).tool.call({ tool: 'Read', file_path: '/a/b.ts', agentId: 'a1', tool_use_id: 'u1' })
+
+  const ui = await ($ as any).ui.mount({
+    plugin: 'task-board',
+    surface: 'desktop',
+    component: 'Pane',
+    requestId: 'activite',
+    props: { bodyColumns: 42, bodyRows: 30 },
+    viewport: { rows: 30, columns: 44, isFullscreen: true },
+  } as never)
+  const all = await texts(ui)
+  expect(all).toContain('ACTIVITÉ')
+  expect(all).toContain('JOURNAL')
+  await ui.unmount()
+})

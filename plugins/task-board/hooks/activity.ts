@@ -65,3 +65,13 @@ export const logoOf = (type: string, id: string): string => LOGOS[type] ?? SPARE
 // Une couleur par agent : on reconnait d'un coup d'oeil qui fait quoi, dans la liste comme dans le journal.
 const TINTS = ['#b08cff', '#4dd4d4', '#ff9f43', '#ff7ab2', '#8fd36a', '#f2d45c']
 export const tintOf = (id: string): string => (id === 'main' ? '#4da3ff' : TINTS[hash(id) % TINTS.length]!)
+
+// Le journal survit aux rechargements : une entree ecrite par une ancienne version peut manquer de champs.
+// Sans cette garde, `tintOf(undefined)` plante le rendu et le panneau reste vide.
+export const complete = <T extends { agent?: string; logo?: string; detail?: string; text?: string }>(x: T) => ({
+  ...x,
+  agent: x.agent ?? 'main',
+  logo: x.logo ?? logoOf('principal', 'main'),
+  detail: x.detail ?? '',
+  text: x.text ?? '',
+})
