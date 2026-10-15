@@ -30,15 +30,6 @@ export const clock = (at: number): string => {
   return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`
 }
 
-// 80ms, 1.2s, 2min05 : la duree d'un outil, plus fine que celle d'une tache.
-export const span = (ms: number | undefined): string => {
-  if (ms === undefined || !Number.isFinite(ms) || ms < 0) return ''
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`
-  const s = Math.round(ms / 1000)
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}min${String(s % 60).padStart(2, '0')}`
-}
-
 // Le logo d'un agent d'apres son type ; un type inconnu prend un logo stable tire de son identifiant.
 const LOGOS: Record<string, string> = {
   principal: '🧠',
@@ -68,10 +59,10 @@ export const tintOf = (id: string): string => (id === 'main' ? '#4da3ff' : TINTS
 
 // Le journal survit aux rechargements : une entree ecrite par une ancienne version peut manquer de champs.
 // Sans cette garde, `tintOf(undefined)` plante le rendu et le panneau reste vide.
-export const complete = <T extends { agent?: string; logo?: string; detail?: string; text?: string }>(x: T) => ({
+export const complete = <T extends { agent?: string; logo?: string; who?: string; text?: string }>(x: T) => ({
   ...x,
   agent: x.agent ?? 'main',
   logo: x.logo ?? logoOf('principal', 'main'),
-  detail: x.detail ?? '',
+  who: x.who ?? 'Agent',
   text: x.text ?? '',
 })

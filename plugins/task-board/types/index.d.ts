@@ -18,19 +18,16 @@ export type Row = {
   usage?: Totals
 }
 
-// Une ligne du journal d'activite (panneau) : un outil, un agent lance, une fin de tache, une demande.
+// Une reflexion de Claude (panneau) : le texte dit pendant qu'il lance ses commandes.
+// `kind` : seules les entrees 'think' s'affichent ; d'anciennes versions en ecrivaient d'autres.
 export type Entry = {
   id: string
   at: number
   who: string
   agent: string
   logo: string
-  depth: number
-  kind: 'prompt' | 'agent' | 'tool' | 'end'
+  kind?: string
   text: string
-  detail: string
-  state: 'run' | 'ok' | 'err'
-  ms?: number
 }
 
 // Compteur de la session et du projet ; `others` = les autres sessions du meme projet.

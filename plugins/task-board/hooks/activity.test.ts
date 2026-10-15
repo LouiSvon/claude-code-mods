@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { clock, complete, describe, logoOf, span, tintOf } from './activity'
+import { clock, complete, describe, logoOf, tintOf } from './activity'
 
 test('describe : la cible de l outil en quelques mots', () => {
   expect(describe({ tool: 'Read', file_path: '/Users/a/dev/demo/src/app.ts' })).toBe('src/app.ts')
@@ -11,9 +11,8 @@ test('describe : la cible de l outil en quelques mots', () => {
   expect(describe({ tool: 'Bash', command: 'x'.repeat(200) }).length).toBe(70)
 })
 
-test('clock et span', () => {
+test('clock', () => {
   expect(clock(new Date(2026, 9, 15, 14, 3, 9).getTime())).toBe('14:03:09')
-  expect([span(80), span(1200), span(15_000), span(125_000), span(undefined)]).toEqual(['80ms', '1.2s', '15s', '2min05', ''])
 })
 
 test('logo et couleur : connus par type, stables pour un agent inconnu', () => {
@@ -27,11 +26,11 @@ test('logo et couleur : connus par type, stables pour un agent inconnu', () => {
 })
 
 test('complete : une ancienne entree du journal ne fait plus planter le rendu', () => {
-  const old = complete({ id: 'x', kind: 'end' } as { agent?: string; logo?: string; detail?: string; text?: string })
+  const old = complete({ id: 'x', kind: 'end' } as { agent?: string; logo?: string; who?: string; text?: string })
   expect(old.agent).toBe('main')
   expect(old.logo).toBe('🧠')
   expect(() => tintOf(old.agent)).not.toThrow()
-  expect(complete({ agent: 'a1', logo: '🔭', detail: 'd', text: 't' })).toEqual({ agent: 'a1', logo: '🔭', detail: 'd', text: 't' })
+  expect(complete({ agent: 'a1', logo: '🔭', who: 'Lister', text: 't' })).toEqual({ agent: 'a1', logo: '🔭', who: 'Lister', text: 't' })
   // la cause du panneau vide : sans garde, tintOf(undefined) leve une erreur
   expect(() => tintOf(undefined as never)).toThrow()
 })

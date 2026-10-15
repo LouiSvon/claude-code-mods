@@ -148,11 +148,21 @@ const world = (on: any, opts: { root?: string; id?: string; files?: Files } = {}
     return { value: { isPlaced: true } } as never
   })
   on('session.compact', () => ({ messages: [{ role: 'user', text: 'resume', toolUses: [] }], usage: usageOf.compact }))
+  const says: Record<string, { text: string; tools: boolean }> = {}
   on('turn.step', async function* (_$: any, e: any) {
-    const u = usageOf[e.agentId ?? 'main']
-    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: u ?? null }
+    const key = e.agentId ?? 'main'
+    const u = usageOf[key]
+    const said = says[key]
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: said?.text ?? '',
+      toolUses: said?.tools ? [{ tool_use_id: 'u', tool: 'Read', input: {} }] : [],
+      stopReason: said?.tools ? 'tool_use' : 'end_turn',
+      usage: u ?? null,
+    }
   })
-  return { files, usageOf, writes, opens, setId: (v: string) => { id = v }, setRoot: (v: string) => { root = v } }
+  return { files, usageOf, writes, opens, says, setId: (v: string) => { id = v }, setRoot: (v: string) => { root = v } }
 }
 
 const use = (input: number, output: number, cache = 0) => ({
@@ -325,31 +335,96 @@ test('une tache en cours montre son objectif et l outil du moment, une tache fin
 const pane = ($: never) =>
   ($ as never as { ui: { mount: (a: never) => Promise<any> } }).ui.mount({ plugin: 'task-board', surface: 'terminal', component: 'Pane', requestId: 'activite', props: {} } as never)
 
-test('le panneau liste les agents et un journal : outils, cibles, durees, echecs', async ($, on) => {
-  world(on)
-  let n = 0
-  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
-  on('tool.call', (_$: any, e: any) => (e.tool === 'Bash' ? { deny: 'refuse' } : { ref: 'r', result: {}, text: '' }) as never)
-  await ($ as any).turn.start({ text: 'Optimise mes mods', turnId: 't' })
-  await spawn($, 'Lister les fichiers du dossier')
-  await ($ as any).tool.call({ tool: 'Read', file_path: '/Users/a/dev/demo/src/app.ts', agentId: 'a1', tool_use_id: `u${++n}` })
-  await ($ as any).tool.call({ tool: 'Bash', command: 'rm -rf /', agentId: 'a1', tool_use_id: `u${++n}` })
+const mountPane = (surface: string) => ($: never) =>
+  ($ as never as { ui: { mount: (a: never) => Promise<any> } }).ui.mount({
+    plugin: 'task-board',
+    surface,
+    component: 'Pane',
+    requestId: 'activite',
+    props: { bodyColumns: 42 },
+    viewport: { rows: 30, columns: 44, isFullscreen: true },
+  } as never)
 
-  const ui = await pane($ as never)
+test('le panneau montre ce que Claude dit en travaillant, et rien des commandes', async ($, on) => {
+  const w = world(on)
+  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
+  on('tool.call', () => ({ ref: 'r', result: {}, text: '' }) as never)
+  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'desktop', isInteractive: true, source: 'startup' })
+  await ($ as any).turn.start({ text: 'demande', turnId: 't' })
+  await spawn($, 'Explorer')
+
+  w.says.main = { text: 'Je vérifie   le compteur\n avant de le corriger.', tools: true }
+  await step($)
+  w.says.a1 = { text: 'Trois fichiers de tests trouvés.', tools: true }
+  await step($, 'a1')
+  // une etape sans texte (que des commandes) : rien de plus
+  w.says.main = { text: '', tools: true }
+  await step($)
+  await ($ as any).tool.call({ tool: 'Bash', command: 'cd /tmp && ls', agentId: 'a1', tool_use_id: 'u1' })
+
+  const ui = await mountPane('desktop')($ as never)
   const all = await texts(ui)
-  expect(all).toContain('ACTIVITÉ')
-  expect(all).toContain('2 outils')
-  expect(all).toContain('✖ 1')
-  expect(all).toContain('🔭')
+  expect(all).toContain('RÉFLEXION')
+  expect(all).toContain('2 notes')
+  expect(all).toContain('Je vérifie le compteur avant de le corriger.')
+  expect(all).toContain('Trois fichiers de tests trouvés.')
   expect(all).toContain('🧠')
-  expect(all).toContain('Optimise mes mods')
-  expect(all).toContain('lance Lister')
-  expect(all).toContain('Read')
-  expect(all).toContain('src/app.ts')
-  expect(all).toContain('Lister les fichiers du dossier')
-  // le plus recent en haut : la commande refusee precede la lecture
-  expect(all.indexOf('rm -rf')).toBeLessThan(all.indexOf('src/app.ts'))
+  expect(all).toContain('🔭')
+  expect(all).not.toContain('cd /tmp')
+  expect(all).not.toContain('Bash')
+  // le plus recent en haut
+  expect(all.indexOf('Trois fichiers')).toBeLessThan(all.indexOf('Je vérifie'))
   await ui.unmount()
+})
+
+test('que des commandes : rien dans le panneau et il ne s ouvre pas', async ($, on) => {
+  const w = world(on)
+  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'desktop', isInteractive: true, source: 'startup' })
+  await ($ as any).turn.start({ text: 'demande', turnId: 't' })
+  w.says.main = { text: '', tools: true }
+  await step($)
+  await step($)
+  await new Promise(r => setTimeout(r, 20))
+
+  expect(w.opens.length).toBe(0)
+  const ui = await mountPane('desktop')($ as never)
+  const all = await texts(ui)
+  expect(all).toContain('0 note')
+  expect(all).toContain('aucune étape')
+  await ui.unmount()
+})
+
+test('le panneau s ouvre une seule fois, a la premiere reflexion, sur l app de bureau', async ($, on) => {
+  const w = world(on)
+  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'desktop', isInteractive: true, source: 'startup' })
+  await new Promise(r => setTimeout(r, 20))
+  expect(w.opens.length).toBe(0)
+
+  w.says.main = { text: 'Premiere note.', tools: true }
+  await step($)
+  await step($)
+  await new Promise(r => setTimeout(r, 20))
+  expect(w.opens.length).toBe(1)
+  expect(w.opens[0]).toMatchObject({ id: 'activite', columns: 44 })
+})
+
+test('sur un terminal simple, le panneau ne s ouvre jamais seul', async ($, on) => {
+  const w = world(on)
+  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'terminal', isInteractive: true, source: 'startup' })
+  w.says.main = { text: 'Une note.', tools: true }
+  await step($)
+  await new Promise(r => setTimeout(r, 20))
+  expect(w.opens.length).toBe(0)
+})
+
+test('la reponse finale de l agent principal n est pas dupliquee dans le panneau', async ($, on) => {
+  const w = world(on)
+  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'desktop', isInteractive: true, source: 'startup' })
+  w.says.main = { text: 'Voici ma reponse finale.', tools: false }
+  await step($)
+  await new Promise(r => setTimeout(r, 20))
+
+  expect(w.opens.length).toBe(0)
 })
 
 test('la commande /activite ouvre le panneau', async ($, on) => {
@@ -358,41 +433,4 @@ test('la commande /activite ouvre le panneau', async ($, on) => {
   const out = await ($ as any).command.run({ command: 'activite', args: '', origin: { kind: 'user' } })
 
   expect(JSON.stringify(out)).toContain('Panneau')
-})
-
-test('le panneau s ouvre seul, etroit, sur l app de bureau ; un terminal l ouvre a la demande', async ($, on) => {
-  const w = world(on)
-  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'desktop', isInteractive: true, source: 'startup' })
-  await new Promise(r => setTimeout(r, 20))
-  expect(w.opens.length).toBe(1)
-  expect(w.opens[0]).toMatchObject({ id: 'activite', columns: 44 })
-})
-
-test('sur un terminal simple, rien ne s ouvre au demarrage', async ($, on) => {
-  const w = world(on)
-  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'terminal', isInteractive: true, source: 'startup' })
-  await new Promise(r => setTimeout(r, 20))
-  expect(w.opens.length).toBe(0)
-})
-
-test('le panneau se dessine aussi sur la surface desktop, avec des props de panneau reelles', async ($, on) => {
-  world(on)
-  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
-  on('tool.call', () => ({ ref: 'r', result: {}, text: '' }) as never)
-  await ($ as any).turn.start({ text: 'demande', turnId: 't' })
-  await spawn($, 'Explorer')
-  await ($ as any).tool.call({ tool: 'Read', file_path: '/a/b.ts', agentId: 'a1', tool_use_id: 'u1' })
-
-  const ui = await ($ as any).ui.mount({
-    plugin: 'task-board',
-    surface: 'desktop',
-    component: 'Pane',
-    requestId: 'activite',
-    props: { bodyColumns: 42, bodyRows: 30 },
-    viewport: { rows: 30, columns: 44, isFullscreen: true },
-  } as never)
-  const all = await texts(ui)
-  expect(all).toContain('ACTIVITÉ')
-  expect(all).toContain('JOURNAL')
-  await ui.unmount()
 })

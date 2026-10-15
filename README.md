@@ -31,7 +31,7 @@ Deux mods pour l'app Claude Code, qui rendent le travail des agents lisible d'un
 - **Un état en couleur** : `●` bleu en cours, `✔` vert terminé, `✖` rouge erreur, `■` gris arrêté.
 - **La hiérarchie se voit** : un sous-agent est décalé de trois colonnes avec un trait `└`, un agent lancé par un sous-agent d'autant de plus.
 - **Tokens** : une seule ligne `◆ TOKENS` pour la session (`↑` entrée, `↓` sortie, cache), plus le total du projet quand d'autres sessions existent ; les sous-agents gardent leurs propres chiffres.
-- **Panneau d'activité** : étroit, ouvert à droite dans l'app de bureau (`/activite` sur un terminal). Un logo et une couleur par agent, la traînée de ses derniers outils, un journal horodaté (cible, durée, échecs).
+- **Panneau de réflexion** : étroit, à droite dans l'app de bureau. Il montre uniquement ce que Claude dit en travaillant, avec un logo et une couleur par agent ; il ne s'ouvre pas quand il n'y a que des commandes. Les outils restent dans la bande.
 - **Ce que fait l'agent maintenant** : tant qu'une tâche tourne, deux lignes de détail : son objectif (`↳`) et l'outil du moment avec sa cible (`▸ Read hooks/app.ts`), l'étape et le nombre d'outils.
 - **Propre à chaque demande** : le tableau repart de zéro à chaque nouveau message, sauf les agents encore en cours. Un agent relancé plus tard retrouve sa ligne.
 
@@ -73,9 +73,9 @@ Chaque mod est un module de hooks, sans dépendance. Aucun n'envoie de donnée h
 | `session.start` | Charge le compteur de la session (reprise) et des autres sessions du projet. |
 | `turn.start` | Crée la ligne « Réponse », retire les tâches terminées du tour précédent. |
 | `agent.spawn` | Ajoute une ligne avec l'objectif, le type, le modèle et la profondeur. |
-| `turn.step` | Met à jour le modèle et l'effort réels, remet en cours un agent relancé, compte les tokens de la réponse et écrit le fichier de la session. |
-| `tool.call` | Affiche l'outil en cours et l'inscrit au journal avec sa durée et son issue. |
-| `ui.render` (`Pane`) | Dessine le panneau `/activite`. |
+| `turn.step` | Met à jour le modèle et l'effort réels, remet en cours un agent relancé, compte les tokens de la réponse et écrit le fichier de la session, note la réflexion de Claude pour le panneau. |
+| `tool.call` | Affiche l'outil en cours dans la bande. |
+| `ui.render` (`Pane`) | Dessine le panneau de réflexion (`/activite`). |
 | `turn.complete` | Passe la tâche en terminé, erreur ou arrêté, avec sa durée ; relit les autres sessions du projet. |
 | `ui.render` (`AbovePrompt`) | Dessine la barre. |
 
@@ -95,7 +95,7 @@ Chaque mod est un module de hooks, sans dépendance. Aucun n'envoie de donnée h
 
 ```bash
 claude plugin validate plugins/task-board
-claude plugin test plugins/task-board        # 27 tests
+claude plugin test plugins/task-board        # 30 tests
 claude plugin test plugins/statusline-app    # 5 tests
 ```
 

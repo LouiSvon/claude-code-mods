@@ -35,29 +35,25 @@ Barre de tâches au-dessus de la saisie de Claude Code : un mot, un état, un mo
 - **Tokens d'un sous-agent** : `↑` entrée neuve (non cache + écriture en cache), `↓` sortie, sur sa ligne. La ligne principale n'en affiche pas : c'est le compteur de session.
 - **Capacité** : quatre tâches au plus, `+N autres` au-delà. Une ligne trop longue pour le terminal est coupée au bord (`…`), jamais cassée sur la suivante.
 
-## Panneau d'activité
+## Panneau de réflexion
 
-Sur l'app de bureau, un panneau étroit (44 colonnes) s'ouvre tout seul à droite et y reste, pour voir ce que fait Claude en détail sans alourdir la bande. Sur un terminal simple il s'ouvre à la demande avec `/activite` (il prendrait des lignes de la conversation). La même commande le rouvre après fermeture.
+Un panneau étroit (44 colonnes) à droite de l'app de bureau montre **ce que Claude dit en travaillant** : le texte qui accompagne ses commandes (« Je vérifie le compteur avant de le corriger. »), avec l'heure, le logo et le nom de l'agent. Le plus récent est en haut.
 
 ```
-◆ ACTIVITÉ  ● 2  ✔ 1  14 outils
-🧠 Réponse  ● en cours
-   ↳ Optimise mes deux mods
-   ▸ Edit hooks/register.tsx
-   ● ● ● ● ● étape 4 · 7 outils
-   └ 🔭 Lister  ✔ terminé  4s · haiku
-      ↳ Lister les fichiers du dossier
-      ● ● ● étape 2 · 3 outils
-◆ JOURNAL
-14:03:09 🔭 ✔ Read src/app.ts  80ms
-14:03:08 🧠 ⇢ lance Lister
-── 14:03:05 ── Optimise mes deux mods
+◆ RÉFLEXION  2 notes
+14:03:09 🔭 Lister
+Trois fichiers de tests trouvés.
+
+14:03:05 🧠 Réponse
+Je vérifie le compteur avant de le corriger.
 ```
 
-- **Un logo et une couleur par agent** : 🧠 la réponse principale, 🔭 Explore, 🧭 Plan, 🤖 general-purpose, 🔎 chercheur, 🔧 implementeur, 🧐 relecteur, 🎼 orchestrateur, 📘 claude-code-guide. Un agent d'un autre type reçoit un logo stable tiré de son identifiant. Le logo et la couleur se retrouvent dans la bande, la liste et le journal.
-- **Agents** : toutes les tâches (la bande en montre quatre), avec objectif (`↳`), outil du moment (`▸`), étape, nombre d'outils et tokens des sous-agents. Une rangée de points montre les dix derniers outils de l'agent : vert réussi, orange en cours, rouge refusé ou en erreur.
-- **Journal** : les 300 derniers événements, le plus récent en haut. Une ligne par demande (`── 14:03:09 ──`), par agent lancé (`⇢`), par outil (`▸` en cours, `✔`, `✖`, avec sa cible et sa durée) et par fin de tâche.
-- Le journal vit en mémoire de la session : il n'est pas écrit sur disque.
+- **Pas de commandes** : ni `Bash cd …`, ni outils, ni journal. Ils restent dans la bande au-dessus de la saisie, qui montre l'outil du moment.
+- **Que des commandes, rien d'écrit** : le panneau ne s'ouvre pas. Il s'ouvre une seule fois, à la première réflexion, sur l'app de bureau. Sur un terminal simple (où il prendrait des lignes de la conversation) il s'ouvre à la demande avec `/activite`, qui le rouvre aussi après fermeture.
+- **Pas de doublon** : la réponse finale de l'agent principal est déjà dans la conversation, elle n'est pas répétée. Celle d'un sous-agent, si.
+- **Un logo et une couleur par agent** : 🧠 la réponse principale, 🔭 Explore, 🧭 Plan, 🤖 general-purpose, 🔎 chercheur, 🔧 implementeur, 🧐 relecteur, 🎼 orchestrateur, 📘 claude-code-guide. Un autre type reçoit un logo stable tiré de son identifiant. Les logos et les couleurs se retrouvent dans la bande.
+- Les 60 dernières notes sont gardées en mémoire de la session, jamais écrites sur disque. Chaque note est coupée à 320 caractères.
+- Limite : le texte vient de la réponse visible de chaque étape. La réflexion interne du modèle (`thinking`), quand elle est masquée, n'est pas disponible.
 
 ## Compteur de tokens
 
@@ -79,4 +75,4 @@ Le seul fichier écrit est le compteur, un par session : `~/.claude/mod-tokens/<
 claude plugin test .
 ```
 
-Vingt-sept tests : les cinq de la barre (attente, terminé puis en cours, tâche principale visible, décalage, agent relancé) et vingt-deux sur les tokens, l'activité et le panneau (formatage, clés de projet sans collision, cumul par agent, total projet avec fichier abîmé ignoré, reprise, `/clear`, réponses simultanées, changement de dossier, tour interrompu, compaction, hors projet). Disque et environnement sont simulés : aucun test n'écrit dans ton `~/.claude`.
+Trente tests : les cinq de la barre (attente, terminé puis en cours, tâche principale visible, décalage, agent relancé) et vingt-cinq sur les tokens, l'activité et le panneau de réflexion (formatage, clés de projet sans collision, cumul par agent, total projet avec fichier abîmé ignoré, reprise, `/clear`, réponses simultanées, changement de dossier, tour interrompu, compaction, hors projet). Disque et environnement sont simulés : aucun test n'écrit dans ton `~/.claude`.
