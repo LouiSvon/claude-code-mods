@@ -4,10 +4,14 @@ Deux mods pour l'app Claude Code, qui rendent le travail des agents lisible d'un
 
 ```
 ◆ TÂCHES   ● 2 en cours   ✔ 1 terminé
-● Réponse    en cours   ↑12k ↓3.4k   opus · high · Read
-   └ ✔ Lister  terminé   ↑2.1k ↓300  4s · haiku
-   └ ● Compter en cours  ↑800 ↓120   sonnet · Grep
-◆ TOKENS   session ↑14k ↓3.8k cache 210k   │   projet demo ↑1.2M ↓140k cache 9.8M · 12 sessions
+● Réponse   en cours   opus · high
+  ↳ Optimise mes deux mods Claude Code
+  ▸ Edit hooks/register.tsx  · étape 4 · 7 outils
+   └ ● Compter  en cours ↑800 ↓120  sonnet
+        ↳ Compter les tests du dépôt
+        ▸ Grep "test(" dans plugins  · étape 2 · 3 outils
+   └ ✔ Lister   terminé  ↑2.1k ↓300  4s · haiku
+◆ TOKENS   ↑14k ↓3.8k cache 210k   │   projet demo ↑1.2M ↓140k · 12 sessions
 ┌──────────────────────────────────────────────┐
 │ Tapez / pour les commandes.                  │
 └──────────────────────────────────────────────┘
@@ -26,8 +30,8 @@ Deux mods pour l'app Claude Code, qui rendent le travail des agents lisible d'un
 - **Un mot par tâche** : le premier mot utile de la description de l'agent (« Lister », « Compter », « Relire »). La demande principale s'appelle « Réponse ».
 - **Un état en couleur** : `●` bleu en cours, `✔` vert terminé, `✖` rouge erreur, `■` gris arrêté.
 - **La hiérarchie se voit** : un sous-agent est décalé de trois colonnes avec un trait `└`, un agent lancé par un sous-agent d'autant de plus.
-- **Tokens** : `↑` entrée, `↓` sortie, par ligne, puis une ligne `◆ TOKENS` pour la session et le projet (somme de toutes ses sessions, conservée entre deux lancements).
-- **Ce que fait l'agent maintenant** : l'outil en cours (`Read`, `Grep`, ...) s'ajoute à la ligne tant que la tâche tourne.
+- **Tokens** : une seule ligne `◆ TOKENS` pour la session (`↑` entrée, `↓` sortie, cache), plus le total du projet quand d'autres sessions existent ; les sous-agents gardent leurs propres chiffres.
+- **Ce que fait l'agent maintenant** : tant qu'une tâche tourne, deux lignes de détail : son objectif (`↳`) et l'outil du moment avec sa cible (`▸ Read hooks/app.ts`), l'étape et le nombre d'outils.
 - **Propre à chaque demande** : le tableau repart de zéro à chaque nouveau message, sauf les agents encore en cours. Un agent relancé plus tard retrouve sa ligne.
 
 ### statusline-app
