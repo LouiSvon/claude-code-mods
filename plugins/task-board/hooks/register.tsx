@@ -1,17 +1,14 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { Entry, Row, Tally } from '../types'
-import { clock, complete, describe, logoOf, tintOf } from './activity'
+import type { Row, Tally } from '../types'
+import { describe, logoOf, tintOf } from './activity'
 import { ZERO, add, dur, fmt, folderName, fromUsage, isScratch, parseTotals, projectKey } from './tokens'
 
 const rows = atom({ plugin: 'task-board', key: 'rows' } as const, [])
 const EMPTY: Tally = { session: ZERO, others: ZERO, sessions: 0, project: '' }
 const tally = atom({ plugin: 'task-board', key: 'tally' } as const, EMPTY)
-const journal = atom({ plugin: 'task-board', key: 'journal' } as const, [])
 const MAIN = 'main'
-const PANE = 'activite'
-const PANE_OPEN = { id: PANE, title: 'Réflexion', columns: 44, rows: 16 }
 const MAX_ROWS = 4
 const BLUE = '#4da3ff'
 const CYAN = '#4dd4d4'
@@ -44,28 +41,6 @@ const cap = (list: Row[]) => {
   const main = list.filter(r => r.id === MAIN)
   const others = list.filter(r => r.id !== MAIN).slice(-59)
   return [...main, ...others]
-}
-
-// Reflexions de Claude pour le panneau : les 60 dernieres, de la plus ancienne a la plus recente.
-const note = ($: any, entry: Entry) => update($, journal, list => [...list, entry].slice(-60))
-const whoOf = (list: Row[], id: string) => {
-  const row = list.find(r => r.id === id)
-  return {
-    who: row === undefined ? 'Agent' : label(row),
-    agent: id,
-    logo: logoOf(row?.type ?? 'principal', id),
-  }
-}
-
-// Le panneau ne s'ouvre qu'a la premiere reflexion, et une seule fois : un terminal simple l'ouvre a la demande.
-let surface: string | null = null
-let opened = false
-const showPane = ($: any) => {
-  if (opened || surface === 'terminal') return
-  opened = true
-  void $.ui.open(PANE_OPEN).catch(() => {
-    opened = false
-  })
 }
 
 let model = ''
@@ -221,31 +196,11 @@ const rowView = ({ Box, Text }: any, row: Row) => {
   )
 }
 
-// Une reflexion : l'heure, le logo et le nom de l'agent, puis ce qu'il a dit.
-const thoughtView = ({ Box, Text }: any, raw: Entry) => {
-  const x: Entry = complete(raw)
-
-  return (
-    <Box key={x.id} flexDirection="column" marginBottom={1}>
-      <Text wrap="truncate-end">
-        <Text dimColor>{clock(x.at)} </Text>
-        <Text>{x.logo} </Text>
-        <Text color={tintOf(x.agent)} bold>{x.who}</Text>
-      </Text>
-      <Text wrap="wrap">{x.text}</Text>
-    </Box>
-  )
-}
-
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     // Une ancienne version epinglait une ligne de statut : un rechargement l'efface.
     $.ui.status(undefined)
     await serial(() => adopt($, true)).catch(() => undefined)
-    await $.command
-      .register({ name: 'activite', description: "Ouvre le panneau de réflexion de Claude" })
-      .catch(() => undefined)
-    surface = e.surface
 
     return next(e)
   })
@@ -346,20 +301,6 @@ export const register: Register = on => {
       await spend($, spent, id)
     }
 
-    // La reflexion de Claude : le texte qui accompagne ses commandes. Une etape sans texte (que des commandes)
-    // n'ajoute rien, et la reponse finale de l'agent principal est deja dans la conversation.
-    const said = result.answer.replace(/\s+/g, ' ').trim()
-    if (said !== '' && (result.toolUses.length > 0 || id !== MAIN)) {
-      try {
-        const at = await $.clock.now()
-        const who = whoOf(await read($, rows), id)
-        await note($, { id: `k${at}${id}${e.index}`, at, ...who, kind: 'think', text: short(said, 320) })
-        showPane($)
-      } catch {
-        // le panneau est un confort
-      }
-    }
-
     return result
   })
 
@@ -437,38 +378,5 @@ export const register: Register = on => {
         </Text>
       </Box>
     )
-  })
-
-  on('command.run', { command: 'activite' }, async $ => {
-    opened = true
-    const placed = await $.ui.open(PANE_OPEN)
-
-    return { text: placed.isPlaced ? 'Panneau de réflexion ouvert.' : "Ce terminal n'affiche pas de panneau ici." }
-  })
-
-  // Le panneau : ce que Claude dit en travaillant, le plus recent en haut. Rien d'autre.
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
-    const { Box, Text } = $.ui.resolve(e)
-    try {
-      const log = (await read($, journal)).filter(x => x.kind === 'think')
-      const room = Math.max(3, Math.floor((e.viewport?.rows ?? 30) / 4))
-
-      return (
-        <Box flexDirection="column">
-          <Text wrap="truncate-end">
-            <Text color={BLUE} bold>◆ RÉFLEXION</Text>
-            <Text dimColor>  {log.length} note{log.length > 1 ? 's' : ''}</Text>
-          </Text>
-          {log.length === 0 && <Text dimColor>Rien pour l'instant : Claude n'a encore commenté aucune étape.</Text>}
-          {log
-            .slice(-room)
-            .reverse()
-            .map(x => thoughtView({ Box, Text }, x))}
-        </Box>
-      )
-    } catch (err) {
-      // Un cadre vide ne dit rien : on montre la cause.
-      return <Text color="error" wrap="wrap">Erreur d'affichage : {String(err)}</Text>
-    }
   })
 }

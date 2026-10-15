@@ -141,28 +141,12 @@ const world = (on: any, opts: { root?: string; id?: string; files?: Files } = {}
   })
   on('turn.start', (_$: any, e: any) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
-  on('command.register', (_$: any, e: any) => ({ value: { command: e.name } }) as never)
-  const opens: any[] = []
-  on('ui.open', (_$: any, e: any) => {
-    opens.push(e)
-    return { value: { isPlaced: true } } as never
-  })
   on('session.compact', () => ({ messages: [{ role: 'user', text: 'resume', toolUses: [] }], usage: usageOf.compact }))
-  const says: Record<string, { text: string; tools: boolean }> = {}
   on('turn.step', async function* (_$: any, e: any) {
-    const key = e.agentId ?? 'main'
-    const u = usageOf[key]
-    const said = says[key]
-    return {
-      turnId: e.turnId,
-      index: e.index,
-      answer: said?.text ?? '',
-      toolUses: said?.tools ? [{ tool_use_id: 'u', tool: 'Read', input: {} }] : [],
-      stopReason: said?.tools ? 'tool_use' : 'end_turn',
-      usage: u ?? null,
-    }
+    const u = usageOf[e.agentId ?? 'main']
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: u ?? null }
   })
-  return { files, usageOf, writes, opens, says, setId: (v: string) => { id = v }, setRoot: (v: string) => { root = v } }
+  return { files, usageOf, writes, setId: (v: string) => { id = v }, setRoot: (v: string) => { root = v } }
 }
 
 const use = (input: number, output: number, cache = 0) => ({
@@ -332,105 +316,3 @@ test('une tache en cours montre son objectif et l outil du moment, une tache fin
   void w
 })
 
-const pane = ($: never) =>
-  ($ as never as { ui: { mount: (a: never) => Promise<any> } }).ui.mount({ plugin: 'task-board', surface: 'terminal', component: 'Pane', requestId: 'activite', props: {} } as never)
-
-const mountPane = (surface: string) => ($: never) =>
-  ($ as never as { ui: { mount: (a: never) => Promise<any> } }).ui.mount({
-    plugin: 'task-board',
-    surface,
-    component: 'Pane',
-    requestId: 'activite',
-    props: { bodyColumns: 42 },
-    viewport: { rows: 30, columns: 44, isFullscreen: true },
-  } as never)
-
-test('le panneau montre ce que Claude dit en travaillant, et rien des commandes', async ($, on) => {
-  const w = world(on)
-  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
-  on('tool.call', () => ({ ref: 'r', result: {}, text: '' }) as never)
-  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'desktop', isInteractive: true, source: 'startup' })
-  await ($ as any).turn.start({ text: 'demande', turnId: 't' })
-  await spawn($, 'Explorer')
-
-  w.says.main = { text: 'Je vérifie   le compteur\n avant de le corriger.', tools: true }
-  await step($)
-  w.says.a1 = { text: 'Trois fichiers de tests trouvés.', tools: true }
-  await step($, 'a1')
-  // une etape sans texte (que des commandes) : rien de plus
-  w.says.main = { text: '', tools: true }
-  await step($)
-  await ($ as any).tool.call({ tool: 'Bash', command: 'cd /tmp && ls', agentId: 'a1', tool_use_id: 'u1' })
-
-  const ui = await mountPane('desktop')($ as never)
-  const all = await texts(ui)
-  expect(all).toContain('RÉFLEXION')
-  expect(all).toContain('2 notes')
-  expect(all).toContain('Je vérifie le compteur avant de le corriger.')
-  expect(all).toContain('Trois fichiers de tests trouvés.')
-  expect(all).toContain('🧠')
-  expect(all).toContain('🔭')
-  expect(all).not.toContain('cd /tmp')
-  expect(all).not.toContain('Bash')
-  // le plus recent en haut
-  expect(all.indexOf('Trois fichiers')).toBeLessThan(all.indexOf('Je vérifie'))
-  await ui.unmount()
-})
-
-test('que des commandes : rien dans le panneau et il ne s ouvre pas', async ($, on) => {
-  const w = world(on)
-  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'desktop', isInteractive: true, source: 'startup' })
-  await ($ as any).turn.start({ text: 'demande', turnId: 't' })
-  w.says.main = { text: '', tools: true }
-  await step($)
-  await step($)
-  await new Promise(r => setTimeout(r, 20))
-
-  expect(w.opens.length).toBe(0)
-  const ui = await mountPane('desktop')($ as never)
-  const all = await texts(ui)
-  expect(all).toContain('0 note')
-  expect(all).toContain('aucune étape')
-  await ui.unmount()
-})
-
-test('le panneau s ouvre une seule fois, a la premiere reflexion, sur l app de bureau', async ($, on) => {
-  const w = world(on)
-  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'desktop', isInteractive: true, source: 'startup' })
-  await new Promise(r => setTimeout(r, 20))
-  expect(w.opens.length).toBe(0)
-
-  w.says.main = { text: 'Premiere note.', tools: true }
-  await step($)
-  await step($)
-  await new Promise(r => setTimeout(r, 20))
-  expect(w.opens.length).toBe(1)
-  expect(w.opens[0]).toMatchObject({ id: 'activite', columns: 44 })
-})
-
-test('sur un terminal simple, le panneau ne s ouvre jamais seul', async ($, on) => {
-  const w = world(on)
-  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'terminal', isInteractive: true, source: 'startup' })
-  w.says.main = { text: 'Une note.', tools: true }
-  await step($)
-  await new Promise(r => setTimeout(r, 20))
-  expect(w.opens.length).toBe(0)
-})
-
-test('la reponse finale de l agent principal n est pas dupliquee dans le panneau', async ($, on) => {
-  const w = world(on)
-  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'desktop', isInteractive: true, source: 'startup' })
-  w.says.main = { text: 'Voici ma reponse finale.', tools: false }
-  await step($)
-  await new Promise(r => setTimeout(r, 20))
-
-  expect(w.opens.length).toBe(0)
-})
-
-test('la commande /activite ouvre le panneau', async ($, on) => {
-  world(on)
-  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'terminal', isInteractive: true, source: 'startup' })
-  const out = await ($ as any).command.run({ command: 'activite', args: '', origin: { kind: 'user' } })
-
-  expect(JSON.stringify(out)).toContain('Panneau')
-})
