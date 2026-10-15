@@ -1,12 +1,19 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { Row } from '../types'
+import type { Row, Tally } from '../types'
+import { ZERO, add, dur, fmt, folderName, fromUsage, isScratch, parseTotals, projectKey } from './tokens'
+import type { Totals } from './tokens'
 
 const rows = atom({ plugin: 'task-board', key: 'rows' } as const, [])
+const EMPTY: Tally = { session: ZERO, others: ZERO, sessions: 0, project: '' }
+const tally = atom({ plugin: 'task-board', key: 'tally' } as const, EMPTY)
 const MAIN = 'main'
 const MAX_ROWS = 5
 const BLUE = '#4da3ff'
+const CYAN = '#4dd4d4'
+const ORANGE = '#ff9f43'
+const VIOLET = '#b08cff'
 
 const short = (text: string, n: number) => {
   const one = text.replace(/\s+/g, ' ').trim()
@@ -38,6 +45,87 @@ const cap = (list: Row[]) => {
 
 let model = ''
 let effort = ''
+// Identifiant de session vu en dernier : /clear en change sans relancer session.start.
+let sid = ''
+
+// Un fichier par session sous ~/.claude/mod-tokens/<projet>/ : aucune ecriture partagee,
+// le total du projet est la somme des fichiers.
+const where = async ($: any) => {
+  const root: string = await $.session.root()
+  const home: string | undefined = await $.env.get('HOME')
+  if (isScratch(root) || !home) return null
+  return { dir: `${home}/.claude/mod-tokens/${projectKey(root)}`, name: folderName(root) }
+}
+
+// Somme des autres sessions du projet ; un dossier absent ou un fichier illisible comptent pour rien.
+const scanOthers = async ($: any, dir: string, id: string) => {
+  let others = ZERO
+  let sessions = 0
+  let entries: { name: string; kind: string }[] = []
+  try {
+    entries = await $.fs.list(dir)
+  } catch {
+    return { others, sessions }
+  }
+  for (const f of entries) {
+    if (f.kind !== 'file' || !f.name.endsWith('.json') || f.name === `${id}.json`) continue
+    try {
+      const t = parseTotals(await $.fs.read(`${dir}/${f.name}`))
+      if (t !== null) {
+        others = add(others, t)
+        sessions += 1
+      }
+    } catch {
+      // fichier en cours d'ecriture par une autre session
+    }
+  }
+  return { others, sessions }
+}
+
+// Se cale sur la session courante : relit son fichier (reprise) et les autres sessions du projet.
+const adopt = async ($: any, force = false) => {
+  const id: string = await $.session.id()
+  if (id === sid && !force) return
+  sid = id
+  const place = await where($)
+  let session = ZERO
+  let found = { others: ZERO, sessions: 0 }
+  if (place !== null) {
+    try {
+      session = parseTotals(await $.fs.read(`${place.dir}/${id}.json`)) ?? ZERO
+    } catch {
+      // premiere fois pour cette session
+    }
+    found = await scanOthers($, place.dir, id)
+  }
+  await update($, tally, () => ({
+    session,
+    others: found.others,
+    sessions: found.sessions,
+    project: place?.name ?? '',
+  }))
+}
+
+const save = async ($: any, session: Totals) => {
+  try {
+    const place = await where($)
+    if (place === null) return
+    await $.fs.write(`${place.dir}/${sid}.json`, JSON.stringify({ ...session, updatedAt: await $.clock.now() }))
+  } catch {
+    // le compteur est un confort : un disque en echec ne doit pas casser un tour
+  }
+}
+
+const refreshOthers = async ($: any) => {
+  try {
+    const place = await where($)
+    if (place === null) return
+    const found = await scanOthers($, place.dir, sid)
+    await update($, tally, t => ({ ...t, others: found.others, sessions: found.sessions }))
+  } catch {
+    // idem
+  }
+}
 
 const LOOK = {
   running: { color: BLUE, icon: '●', text: 'en cours' },
@@ -50,6 +138,11 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     // Une ancienne version epinglait une ligne de statut : un rechargement l'efface.
     $.ui.status(undefined)
+    try {
+      await adopt($, true)
+    } catch {
+      // sans compteur, la barre reste utile
+    }
 
     return next(e)
   })
@@ -141,7 +234,22 @@ export const register: Register = on => {
       })),
     )
 
-    return yield* next(e)
+    const result = yield* next(e)
+
+    // Source unique des tokens : chaque reponse du modele, y compris celle d'un tour interrompu ensuite.
+    const spent = fromUsage(result.usage)
+    if (spent.input + spent.output + spent.cache > 0) {
+      try {
+        await adopt($)
+        await update($, rows, patch(id, row => ({ usage: add(row.usage ?? ZERO, spent) })))
+        const t = await update($, tally, cur => ({ ...cur, session: add(cur.session, spent) }))
+        await save($, t.session)
+      } catch {
+        // idem
+      }
+    }
+
+    return result
   })
 
   on('tool.call', async ($, e, next) => {
@@ -156,16 +264,18 @@ export const register: Register = on => {
     const status: Row['status'] =
       e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'aborted' : 'error'
     await update($, rows, patch(id, () => ({ status, action: '', durationMs: e.durationMs })))
+    if (id === MAIN) await refreshOthers($)
 
     return next(e)
   })
 
-  // Une ligne par tache, un mot, un etat : lisible d'un coup d'oeil.
+  // Une ligne par tache, un mot, un etat, ses tokens ; un pied de page pour la session et le projet.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
     const { Box, Text } = $.ui.resolve(e)
     const list = await read($, rows)
+    const t = await read($, tally)
     const count = (s: Row['status']) => list.filter(r => r.status === s).length
     const running = count('running')
     const done = count('done')
@@ -176,21 +286,30 @@ export const register: Register = on => {
     const shown = [...main, ...others.slice(-(MAX_ROWS - main.length))]
     const hidden = list.length - shown.length
 
+    const project = add(t.others, t.session)
+    const cell = (u: Totals) => `↑${fmt(u.input)} ↓${fmt(u.output)}`
+
     return (
       <Box flexDirection="column">
         <Box>
           <Text color={BLUE} bold>◆ TÂCHES</Text>
           {list.length === 0 && <Text dimColor>   aucune pour l'instant</Text>}
-          {running > 0 && <Text color={LOOK.running.color}>   {running} en cours</Text>}
-          {done > 0 && <Text color={LOOK.done.color}>   {done} terminé{done > 1 ? 's' : ''}</Text>}
-          {failed > 0 && <Text color={LOOK.error.color}>   {failed} échec{failed > 1 ? 's' : ''}</Text>}
+          {running > 0 && <Text color={LOOK.running.color} bold>   ● {running} en cours</Text>}
+          {done > 0 && <Text color={LOOK.done.color}>   ✔ {done} terminé{done > 1 ? 's' : ''}</Text>}
+          {failed > 0 && <Text color={LOOK.error.color}>   ✖ {failed} échec{failed > 1 ? 's' : ''}</Text>}
         </Box>
         {shown.map(row => {
           const look = LOOK[row.status]
-          const extra = [modelName(row.model), row.effort, row.status === 'running' ? row.action : '']
+          const extra = [
+            row.status === 'running' ? '' : dur(row.durationMs),
+            modelName(row.model),
+            row.effort,
+            row.status === 'running' ? row.action : '',
+          ]
             .filter(p => p !== '')
             .join(' · ')
           const indent = row.depth * 3
+          const used = row.usage ?? ZERO
 
           return (
             <Box key={row.id} paddingLeft={indent}>
@@ -200,11 +319,32 @@ export const register: Register = on => {
                 <Text bold={row.status === 'running'} dimColor={row.status === 'done'}>{label(row)}</Text>
               </Box>
               <Box width={11}><Text color={look.color}>{look.text}</Text></Box>
+              <Box width={15}>
+                <Text color={used.input + used.output > 0 ? CYAN : undefined} dimColor={used.input + used.output === 0}>
+                  {used.input + used.output > 0 ? cell(used) : '·'}
+                </Text>
+              </Box>
               <Text dimColor>{extra}</Text>
             </Box>
           )
         })}
         {hidden > 0 && <Text dimColor>  +{hidden} autres</Text>}
+        <Box>
+          <Text color={VIOLET} bold>◆ TOKENS</Text>
+          <Text dimColor>   session </Text>
+          <Text color={CYAN} bold>↑{fmt(t.session.input)}</Text>
+          <Text color={ORANGE} bold> ↓{fmt(t.session.output)}</Text>
+          <Text dimColor> cache {fmt(t.session.cache)}</Text>
+          {t.project !== '' && (
+            <>
+              <Text dimColor>   │   projet </Text>
+              <Text color={VIOLET}>{t.project} </Text>
+              <Text color={CYAN} bold>↑{fmt(project.input)}</Text>
+              <Text color={ORANGE} bold> ↓{fmt(project.output)}</Text>
+              <Text dimColor> cache {fmt(project.cache)} · {t.sessions + 1} session{t.sessions > 0 ? 's' : ''}</Text>
+            </>
+          )}
+        </Box>
       </Box>
     )
   })

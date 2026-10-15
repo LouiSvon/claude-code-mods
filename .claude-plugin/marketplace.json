@@ -7,12 +7,12 @@
     {
       "name": "task-board",
       "source": "./plugins/task-board",
-      "description": "Barre de taches au-dessus de la saisie : un mot, un etat et un modele par agent, les sous-agents decales sous leur parent."
+      "description": "Barre de taches au-dessus de la saisie : un mot, un etat, un modele et les tokens par agent, plus le compteur de tokens de la session et du projet."
     },
     {
       "name": "statusline-app",
       "source": "./plugins/statusline-app",
-      "description": "Ligne d'etat sous la saisie dans l'app Claude Code : contexte, limite 5 h et limite de la semaine, avec leur reset."
+      "description": "Ligne d'etat sous la saisie dans l'app Claude Code : contexte (pourcentage et tokens), limite 5 h et de la semaine avec leur reset, prix equivalent API."
     }
   ],
   "description": "Mods pour l'app Claude Code : barre de taches des agents et ligne d'etat."

@@ -1,7 +1,7 @@
 {
   "name": "task-board",
-  "version": "0.1.0",
-  "description": "Barre de taches au-dessus de la saisie : un mot, un etat et un modele par agent, les sous-agents decales sous leur parent.",
+  "version": "0.2.0",
+  "description": "Barre de taches au-dessus de la saisie : un mot, un etat, un modele et les tokens par agent, plus le compteur de tokens de la session et du projet.",
   "author": { "name": "LouiSvon" },
   "repository": "https://github.com/LouiSvon/claude-code-mods",
   "license": "MIT",

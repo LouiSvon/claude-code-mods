@@ -11,6 +11,14 @@ export const gauge = (pct: number) => {
   return { on: '▓'.repeat(filled), off: '░'.repeat(8 - filled) }
 }
 
+// 842, 12k, 200k, 1.2M: the same short form as the task-board's token counters.
+export const short = (n: number): string =>
+  n < 1000 ? String(Math.round(n)) : n < 999_500 ? `${Math.round(n / 1000)}k` : `${(n / 1_000_000).toFixed(1)}M`
+
+// "≈ $0.42": the API-equivalent price, not a charge (a subscription pays a flat fee); "" when unknown.
+export const price = (usd: number | undefined): string =>
+  usd === undefined || !Number.isFinite(usd) || usd <= 0 ? '' : `≈ $${usd < 10 ? usd.toFixed(2) : usd.toFixed(1)}`
+
 // The session's folder, or null when it runs in the app's scratch folder or the home directory.
 export const folderOf = (cwd: string, home = ''): string | null => {
   if (cwd.includes('/scratch-workspaces/') || (home !== '' && cwd === home)) return null
@@ -39,11 +47,14 @@ async function refresh($: EngineInterface) {
       const reset = until(l.resetsAt, now)
       return `${label} ${Math.round(l.percentUsed)}%${reset !== '' ? ` ↻${reset}` : ''}`
     }
+    const fill = usage.context.tokens === undefined ? '' : ` ${short(usage.context.tokens)}/${short(usage.context.window)}`
+    const cost = price(usage.cost?.usd)
     const parts = [
       folderOf(cwd),
-      `Contexte ${g.on}${g.off} ${ctx}%`,
+      `Contexte ${g.on}${g.off} ${ctx}%${fill}`,
       limit('five_hour', '5h'),
       limit('seven_day', 'Semaine'),
+      cost === '' ? null : cost,
       ctx >= 60 ? '/clear conseillé' : null,
     ].filter((p): p is string => p !== null)
     $.ui.status(parts.join(' │ '))

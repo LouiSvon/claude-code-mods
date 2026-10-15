@@ -8,7 +8,8 @@ test('la ligne de statut est calculee et epinglee', async ($: any, on: any) => {
   on('session.usage', () => ({
     value: {
       startedAt: 0,
-      context: { window: 200000, percent: 19 },
+      context: { window: 200000, tokens: 38000, percent: 19 },
+      cost: { usd: 0.4213 },
       rateLimits: [{ kind: 'five_hour', percentUsed: 21, resetsAt: '2026-10-13T13:00:00Z' }],
     },
   }))
@@ -23,4 +24,6 @@ test('la ligne de statut est calculee et epinglee', async ($: any, on: any) => {
   expect(seen.at(-1)).not.toContain('sonnet')
   expect(seen.at(-1)).toContain('demo')
   expect(seen.at(-1)).toContain('5h 21%')
+  expect(seen.at(-1)).toContain('38k/200k')
+  expect(seen.at(-1)).toContain('≈ $0.42')
 })

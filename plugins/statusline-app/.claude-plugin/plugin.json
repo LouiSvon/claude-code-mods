@@ -1,7 +1,7 @@
 {
   "name": "statusline-app",
-  "version": "0.1.0",
-  "description": "Ligne d'etat sous la saisie dans l'app Claude Code : contexte, limite 5 h et limite de la semaine, avec leur reset.",
+  "version": "0.2.0",
+  "description": "Ligne d'etat sous la saisie dans l'app Claude Code : contexte (pourcentage et tokens), limite 5 h et de la semaine avec leur reset, prix equivalent API.",
   "author": { "name": "LouiSvon" },
   "repository": "https://github.com/LouiSvon/claude-code-mods",
   "license": "MIT",

@@ -3,7 +3,7 @@
 Ligne d'état sous la saisie de l'app Claude Code : contexte, limite des 5 heures et limite de la semaine.
 
 ```
-Contexte ▓▓░░░░░░ 19% │ 5h 21% ↻4h25 │ Semaine 33% ↻5j
+Contexte ▓▓░░░░░░ 19% 38k/200k │ 5h 21% ↻4h25 │ Semaine 33% ↻5j │ ≈ $0.42
 ```
 
 ## Installation
@@ -15,7 +15,9 @@ Contexte ▓▓░░░░░░ 19% │ 5h 21% ↻4h25 │ Semaine 33% ↻5j
 ## Contenu de la ligne
 
 - **Dossier** de la session, seulement s'il existe.
-- **Contexte** : jauge de huit crans et pourcentage.
+- **Contexte** : jauge de huit crans, pourcentage et tokens utilisés sur la taille de la fenêtre.
+- **≈ $** : prix équivalent API de la session. Ce n'est pas une facture : un abonnement paie un forfait. Absent quand le moteur ne le donne pas.
+- Les compteurs de tokens par session et par projet sont dans [`task-board`](../task-board), qui peut les colorer.
 - **5h** et **Semaine** : pourcentage utilisé et temps avant le reset. Ces deux champs n'apparaissent que si ton abonnement les expose.
 - **`/clear conseillé`** au-delà de 60 % de contexte.
 
@@ -33,4 +35,4 @@ Le modèle n'est pas affiché : l'app l'affiche déjà à côté de la saisie.
 claude plugin test .
 ```
 
-Quatre tests : jauge et teintes, dossier réel ou non, temps avant reset, ligne épinglée par la session.
+Cinq tests : jauge et teintes, dossier réel ou non, temps avant reset, tokens et prix abrégés, ligne épinglée par la session.
