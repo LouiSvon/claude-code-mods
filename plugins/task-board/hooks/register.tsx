@@ -187,6 +187,7 @@ export const register: Register = on => {
       main,
       ...list.filter(r => r.id !== MAIN && r.status === 'running'),
     ])
+    await serial(() => refreshOthers($))
 
     return next(e)
   })
