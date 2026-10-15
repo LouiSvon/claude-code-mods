@@ -11,6 +11,9 @@ export type Row = {
   steps: number
   depth: number
   durationMs?: number
+  // Cible du dernier outil appele, et nombre d'outils lances (absents sur une ancienne ligne).
+  detail?: string
+  tools?: number
   // Absent sur les lignes ecrites par une ancienne version.
   usage?: Totals
 }

@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Row, Tally } from '../types'
+import { describe } from './activity'
 import { ZERO, add, dur, fmt, folderName, fromUsage, isScratch, parseTotals, projectKey } from './tokens'
 import type { Totals } from './tokens'
 
@@ -9,7 +10,7 @@ const rows = atom({ plugin: 'task-board', key: 'rows' } as const, [])
 const EMPTY: Tally = { session: ZERO, others: ZERO, sessions: 0, project: '' }
 const tally = atom({ plugin: 'task-board', key: 'tally' } as const, EMPTY)
 const MAIN = 'main'
-const MAX_ROWS = 5
+const MAX_ROWS = 4
 const BLUE = '#4da3ff'
 const CYAN = '#4dd4d4'
 const ORANGE = '#ff9f43'
@@ -282,7 +283,7 @@ export const register: Register = on => {
 
   on('tool.call', async ($, e, next) => {
     const id = e.agentId ?? MAIN
-    await update($, rows, patch(id, () => ({ action: e.tool })))
+    await update($, rows, patch(id, row => ({ action: e.tool, detail: describe(e), tools: (row.tools ?? 0) + 1 })))
 
     return next(e)
   })
@@ -315,6 +316,8 @@ export const register: Register = on => {
     const hidden = list.length - shown.length
 
     const project = add(t.others, t.session)
+    // Le projet n'apparait que s'il apporte du neuf : sinon c'est le meme chiffre que la session.
+    const more = t.project !== '' && t.sessions > 0
     const cell = (u: Totals) => `↑${fmt(u.input)} ↓${fmt(u.output)}`
 
     return (
@@ -328,49 +331,54 @@ export const register: Register = on => {
         </Text>
         {shown.map(row => {
           const look = LOOK[row.status]
-          const extra = [
-            row.status === 'running' ? '' : dur(row.durationMs),
-            modelName(row.model),
-            row.effort,
-            row.status === 'running' ? row.action : '',
-          ]
-            .filter(p => p !== '')
-            .join(' · ')
+          const live = row.status === 'running'
+          const extra = [live ? '' : dur(row.durationMs), modelName(row.model), row.effort].filter(p => p !== '').join(' · ')
           const used = row.usage ?? ZERO
-          const spent = used.input + used.output > 0
+          // La ligne principale n'affiche pas ses tokens : c'est le compteur de session, plus bas.
+          const spent = row.id !== MAIN && used.input + used.output > 0
           // Les colonnes suivantes restent alignees malgre le decalage et le trait du sous-agent.
           const lead = row.depth * 3 + (row.depth > 0 ? 2 : 0)
+          const pad = ' '.repeat(row.depth * 3 + 2)
+          const what = row.action === 'reflexion' || row.action === 'demarrage' ? 'réflexion…' : `${row.action} ${row.detail ?? ''}`.trim()
 
-          // Une seule ligne par tache : trop etroit, elle se coupe au bord au lieu de se casser.
+          // Une seule ligne par tache, deux de plus tant qu'elle tourne : l'objectif, puis l'outil du moment.
           return (
-            <Text key={row.id} wrap="truncate-end">
-              {' '.repeat(row.depth * 3)}
-              {row.depth > 0 && <Text dimColor>└ </Text>}
-              <Text color={look.color} bold>{look.icon} </Text>
-              <Text bold={row.status === 'running'} dimColor={row.status === 'done'}>{label(row).padEnd(Math.max(6, 13 - lead))}</Text>
-              <Text color={look.color}>{look.text.padEnd(9)}</Text>
-              <Text color={spent ? CYAN : undefined} dimColor={!spent}>{(spent ? cell(used) : '·').padEnd(13)}</Text>
-              <Text dimColor>{extra}</Text>
-            </Text>
+            <Box key={row.id} flexDirection="column">
+              <Text wrap="truncate-end">
+                {' '.repeat(row.depth * 3)}
+                {row.depth > 0 && <Text dimColor>└ </Text>}
+                <Text color={look.color} bold>{look.icon} </Text>
+                <Text bold={live} dimColor={row.status === 'done'}>{label(row).padEnd(Math.max(6, 13 - lead))}</Text>
+                <Text color={look.color}>{look.text.padEnd(9)}</Text>
+                {spent && <Text color={CYAN}>{`${cell(used)}  `}</Text>}
+                <Text dimColor>{extra}</Text>
+              </Text>
+              {live && (
+                <Text wrap="truncate-end" dimColor>{pad}↳ {row.goal}</Text>
+              )}
+              {live && (
+                <Text wrap="truncate-end">
+                  <Text dimColor>{pad}</Text>
+                  <Text color={ORANGE}>▸ {what}</Text>
+                  <Text dimColor>{`  · étape ${row.steps}${(row.tools ?? 0) > 0 ? ` · ${row.tools} outil${row.tools === 1 ? '' : 's'}` : ''}`}</Text>
+                </Text>
+              )}
+            </Box>
           )
         })}
         {hidden > 0 && <Text dimColor>  +{hidden} autres</Text>}
         <Text wrap="truncate-end">
           <Text color={VIOLET} bold>◆ TOKENS</Text>
-          <Text dimColor>   session </Text>
+          <Text dimColor>   </Text>
           <Text color={CYAN} bold>↑{fmt(t.session.input)}</Text>
           <Text color={ORANGE} bold> ↓{fmt(t.session.output)}</Text>
           <Text dimColor> cache {fmt(t.session.cache)}</Text>
+          {more && <Text dimColor>   │   projet </Text>}
+          {more && <Text color={VIOLET}>{short(t.project, 20)} </Text>}
+          {more && <Text color={CYAN} bold>↑{fmt(project.input)}</Text>}
+          {more && <Text color={ORANGE} bold> ↓{fmt(project.output)}</Text>}
+          {more && <Text dimColor> · {t.sessions + 1} sessions</Text>}
         </Text>
-        {t.project !== '' && (
-          <Text wrap="truncate-end">
-            <Text dimColor>  └ projet </Text>
-            <Text color={VIOLET}>{short(t.project, 24)} </Text>
-            <Text color={CYAN} bold>↑{fmt(project.input)}</Text>
-            <Text color={ORANGE} bold> ↓{fmt(project.output)}</Text>
-            <Text dimColor> cache {fmt(project.cache)} · {t.sessions + 1} session{t.sessions > 0 ? 's' : ''}</Text>
-          </Text>
-        )}
       </Box>
     )
   })

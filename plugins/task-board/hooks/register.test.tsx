@@ -174,9 +174,8 @@ test('les tokens de l agent principal et des sous-agents s additionnent, chacun 
 
   const ui = await show($ as never)
   const all = await texts(ui)
-  expect(all).toContain('↑100 ↓50')
   expect(all).toContain('↑10 ↓5')
-  expect(all).toContain('session ')
+  expect(all).not.toContain('↑100 ↓50')
   expect(all).toContain('↑110')
   expect(all).toContain('↓55')
   expect(all).toContain('cache 1.0k')
@@ -272,9 +271,6 @@ test('un changement de dossier ne double pas les tokens dans deux projets', asyn
 
   expect(JSON.parse(w.files[`${DIR}/s1.json`])).toMatchObject({ input: 50, output: 5 })
   expect(JSON.parse(w.files[`${dirOf('/Users/a/dev/autre')}/s1.json`])).toMatchObject({ input: 7, output: 1 })
-  const ui = await show($ as never)
-  expect(await texts(ui)).toContain('autre')
-  await ui.unmount()
 })
 
 test('deux reponses simultanees apres /clear sont toutes deux comptees dans la nouvelle session', async ($, on) => {
@@ -291,4 +287,31 @@ test('deux reponses simultanees apres /clear sont toutes deux comptees dans la n
 
   expect(JSON.parse(w.files[`${DIR}/s1.json`])).toMatchObject({ input: 100, output: 10 })
   expect(JSON.parse(w.files[`${DIR}/s2.json`])).toMatchObject({ input: 27, output: 5 })
+})
+
+test('une tache en cours montre son objectif et l outil du moment, une tache finie se resume en une ligne', async ($, on) => {
+  const w = world(on)
+  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
+  on('tool.call', () => ({ ref: 'r', result: {}, text: '' }) as never)
+  await ($ as any).turn.start({ text: 'demande', turnId: 't' })
+  await spawn($, 'Lister les fichiers du dossier')
+  await step($, 'a1')
+  await ($ as any).tool.call({ tool: 'Read', file_path: '/Users/a/dev/demo/src/app.ts', agentId: 'a1' })
+
+  const live = await show($ as never)
+  const all = await texts(live)
+  expect(all).toContain('↳ Lister les fichiers du dossier')
+  expect(all).toContain('▸ Read src/app.ts')
+  expect(all).toContain('étape 1 · 1 outil')
+  await live.unmount()
+
+  await ($ as any).turn.complete({ reason: 'answer', agentId: 'a1', answer: '', durationMs: 4000, isAborted: false, turnId: 't' })
+  await ($ as any).turn.complete({ reason: 'answer', answer: '', durationMs: 5000, isAborted: false, turnId: 't' })
+  const done = await show($ as never)
+  const after = await texts(done)
+  expect(after).not.toContain('▸')
+  expect(after).not.toContain('↳')
+  expect(after).toContain('4s')
+  await done.unmount()
+  void w
 })

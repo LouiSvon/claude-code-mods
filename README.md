@@ -18,7 +18,7 @@ Deux mods pour l'app Claude Code, qui rendent le travail des agents lisible d'un
 
 | Mod | Rôle | Où ça s'affiche |
 | --- | --- | --- |
-| [`task-board`](plugins/task-board) | Une ligne par tâche : un mot, un état coloré, les tokens, le modèle et l'effort. Compteur de tokens de la session et du projet. | Au-dessus de la saisie |
+| [`task-board`](plugins/task-board) | Une ligne par tâche, détaillée tant qu'elle tourne (objectif, outil et cible du moment, étape). Un compteur de tokens pour la session, et le projet quand il apporte du neuf. | Au-dessus de la saisie |
 | [`statusline-app`](plugins/statusline-app) | Contexte (pourcentage et tokens), limite des 5 heures et de la semaine avec leur reset, prix équivalent API. | Sous la saisie |
 
 ### task-board
@@ -89,7 +89,7 @@ Chaque mod est un module de hooks, sans dépendance. Aucun n'envoie de donnée h
 
 ```bash
 claude plugin validate plugins/task-board
-claude plugin test plugins/task-board        # 19 tests
+claude plugin test plugins/task-board        # 21 tests
 claude plugin test plugins/statusline-app    # 5 tests
 ```
 
