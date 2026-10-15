@@ -1,15 +1,16 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { Row, Tally } from '../types'
-import { describe } from './activity'
+import type { Entry, Row, Tally } from '../types'
+import { clock, describe, span } from './activity'
 import { ZERO, add, dur, fmt, folderName, fromUsage, isScratch, parseTotals, projectKey } from './tokens'
-import type { Totals } from './tokens'
 
 const rows = atom({ plugin: 'task-board', key: 'rows' } as const, [])
 const EMPTY: Tally = { session: ZERO, others: ZERO, sessions: 0, project: '' }
 const tally = atom({ plugin: 'task-board', key: 'tally' } as const, EMPTY)
+const journal = atom({ plugin: 'task-board', key: 'journal' } as const, [])
 const MAIN = 'main'
+const PANE = 'activite'
 const MAX_ROWS = 4
 const BLUE = '#4da3ff'
 const CYAN = '#4dd4d4'
@@ -42,6 +43,15 @@ const cap = (list: Row[]) => {
   const main = list.filter(r => r.id === MAIN)
   const others = list.filter(r => r.id !== MAIN).slice(-59)
   return [...main, ...others]
+}
+
+// Journal du panneau : les 300 derniers evenements, du plus ancien au plus recent.
+const note = ($: any, entry: Entry) => update($, journal, list => [...list, entry].slice(-300))
+const mark = ($: any, id: string, change: Partial<Entry>) =>
+  update($, journal, list => list.map(x => (x.id === id ? { ...x, ...change } : x)))
+const whoOf = (list: Row[], id: string) => {
+  const row = list.find(r => r.id === id)
+  return { who: row === undefined ? 'Agent' : label(row), depth: row?.depth ?? 0 }
 }
 
 let model = ''
@@ -162,11 +172,77 @@ const LOOK = {
   aborted: { color: 'inactive', icon: '■', text: 'arrêté' },
 } as const
 
+// Une tache : une ligne ; tant qu'elle tourne, deux de plus (l'objectif, puis l'outil du moment).
+// `full` (panneau) garde l'objectif meme une fois la tache finie.
+const rowView = ({ Box, Text }: any, row: Row, full: boolean) => {
+  const look = LOOK[row.status]
+  const live = row.status === 'running'
+  const extra = [live ? '' : dur(row.durationMs), modelName(row.model), row.effort].filter(p => p !== '').join(' · ')
+  const used = row.usage ?? ZERO
+  // La ligne principale n'affiche pas ses tokens : c'est le compteur de session.
+  const spent = row.id !== MAIN && used.input + used.output > 0
+  // Les colonnes suivantes restent alignees malgre le decalage et le trait du sous-agent.
+  const lead = row.depth * 3 + (row.depth > 0 ? 2 : 0)
+  const pad = ' '.repeat(row.depth * 3 + 2)
+  const what = row.action === 'reflexion' || row.action === 'demarrage' ? 'réflexion…' : `${row.action} ${row.detail ?? ''}`.trim()
+
+  return (
+    <Box key={row.id} flexDirection="column">
+      <Text wrap="truncate-end">
+        {' '.repeat(row.depth * 3)}
+        {row.depth > 0 && <Text dimColor>└ </Text>}
+        <Text color={look.color} bold>{look.icon} </Text>
+        <Text bold={live} dimColor={row.status === 'done'}>{label(row).padEnd(Math.max(6, 13 - lead))}</Text>
+        <Text color={look.color}>{look.text.padEnd(9)}</Text>
+        {spent && <Text color={CYAN}>{`↑${fmt(used.input)} ↓${fmt(used.output)}  `}</Text>}
+        <Text dimColor>{extra}</Text>
+      </Text>
+      {(live || full) && <Text wrap="truncate-end" dimColor>{pad}↳ {row.goal}</Text>}
+      {live && (
+        <Text wrap="truncate-end">
+          <Text dimColor>{pad}</Text>
+          <Text color={ORANGE}>▸ {what}</Text>
+          <Text dimColor>{`  · étape ${row.steps}${(row.tools ?? 0) > 0 ? ` · ${row.tools} outil${row.tools === 1 ? '' : 's'}` : ''}`}</Text>
+        </Text>
+      )}
+    </Box>
+  )
+}
+
+// Une ligne du journal : l'heure, qui, ce qui se passe, combien de temps.
+const entryView = ({ Text }: any, x: Entry) => {
+  const time = clock(x.at)
+  const who = x.who.padEnd(11)
+  if (x.kind === 'prompt') {
+    return (
+      <Text key={x.id} wrap="truncate-end">
+        <Text color={VIOLET} bold>── {time} ── </Text>
+        <Text color={VIOLET}>{x.detail}</Text>
+      </Text>
+    )
+  }
+  const color = x.state === 'err' ? 'error' : x.state === 'ok' ? 'success' : ORANGE
+  const icon = x.kind === 'tool' ? (x.state === 'run' ? '▸' : x.state === 'ok' ? '✔' : '✖') : x.kind === 'agent' ? '⇢' : x.state === 'err' ? '✖' : '■'
+  return (
+    <Text key={x.id} wrap="truncate-end">
+      <Text dimColor>{time}  </Text>
+      <Text color={x.depth > 0 ? VIOLET : BLUE}>{x.depth > 0 ? '└ ' : ''}{who}</Text>
+      <Text color={color}>{icon} </Text>
+      <Text bold={x.kind === 'tool'}>{x.text}</Text>
+      {x.detail !== '' && <Text dimColor> {x.detail}</Text>}
+      {x.ms !== undefined && <Text dimColor>{`  ${span(x.ms)}`}</Text>}
+    </Text>
+  )
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     // Une ancienne version epinglait une ligne de statut : un rechargement l'efface.
     $.ui.status(undefined)
     await serial(() => adopt($, true)).catch(() => undefined)
+    await $.command
+      .register({ name: 'activite', description: "Ouvre le panneau d'activité des agents (outils, étapes, journal)" })
+      .catch(() => undefined)
 
     return next(e)
   })
@@ -189,6 +265,8 @@ export const register: Register = on => {
       ...list.filter(r => r.id !== MAIN && r.status === 'running'),
     ])
     await serial(() => refreshOthers($))
+    const at = await $.clock.now()
+    await note($, { id: `p${at}`, at, who: 'Réponse', depth: 0, kind: 'prompt', text: 'demande', detail: short(e.text || 'suite', 160), state: 'ok' })
 
     return next(e)
   })
@@ -212,6 +290,9 @@ export const register: Register = on => {
       const parent = list.find(r => r.id === e.parentAgentId)
       return cap([...list, { ...row, depth: parent === undefined ? 1 : parent.depth + 1 }])
     })
+    const at = await $.clock.now()
+    const parent = whoOf(await read($, rows), e.parentAgentId ?? MAIN)
+    await note($, { id: `s${started.agentId}`, at, who: parent.who, depth: parent.depth, kind: 'agent', text: `lance ${label(row)}`, detail: row.goal, state: 'ok' })
 
     return started
   })
@@ -283,9 +364,24 @@ export const register: Register = on => {
 
   on('tool.call', async ($, e, next) => {
     const id = e.agentId ?? MAIN
-    await update($, rows, patch(id, row => ({ action: e.tool, detail: describe(e), tools: (row.tools ?? 0) + 1 })))
+    const detail = describe(e)
+    await update($, rows, patch(id, row => ({ action: e.tool, detail, tools: (row.tools ?? 0) + 1 })))
+    const at = await $.clock.now()
+    const key = e.tool_use_id ?? `t${at}${e.tool}`
+    const who = whoOf(await read($, rows), id)
+    await note($, { id: key, at, who: who.who, depth: who.depth, kind: 'tool', text: e.tool, detail, state: 'run' })
 
-    return next(e)
+    // Le journal garde la duree et l'issue de l'outil ; une erreur ou un refus se voit en rouge.
+    try {
+      const ran = await next(e)
+      const failed = ran.deny !== undefined || ('isError' in ran && ran.isError === true)
+      await mark($, key, { state: failed ? 'err' : 'ok', ms: (await $.clock.now()) - at })
+
+      return ran
+    } catch (err) {
+      await mark($, key, { state: 'err', ms: (await $.clock.now()) - at })
+      throw err
+    }
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -294,6 +390,10 @@ export const register: Register = on => {
       e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'aborted' : 'error'
     await update($, rows, patch(id, () => ({ status, action: '', durationMs: e.durationMs })))
     if (id === MAIN) await serial(() => refreshOthers($))
+    const at = await $.clock.now()
+    const who = whoOf(await read($, rows), id)
+    const words = status === 'done' ? 'terminé' : status === 'aborted' ? 'arrêté' : 'erreur'
+    await note($, { id: `e${at}${id}`, at, who: who.who, depth: who.depth, kind: 'end', text: words, detail: '', state: status === 'done' ? 'ok' : 'err', ms: e.durationMs })
 
     return next(e)
   })
@@ -318,7 +418,6 @@ export const register: Register = on => {
     const project = add(t.others, t.session)
     // Le projet n'apparait que s'il apporte du neuf : sinon c'est le meme chiffre que la session.
     const more = t.project !== '' && t.sessions > 0
-    const cell = (u: Totals) => `↑${fmt(u.input)} ↓${fmt(u.output)}`
 
     return (
       <Box flexDirection="column">
@@ -329,43 +428,7 @@ export const register: Register = on => {
           {done > 0 && <Text color={LOOK.done.color}>   ✔ {done} terminé{done > 1 ? 's' : ''}</Text>}
           {failed > 0 && <Text color={LOOK.error.color}>   ✖ {failed} échec{failed > 1 ? 's' : ''}</Text>}
         </Text>
-        {shown.map(row => {
-          const look = LOOK[row.status]
-          const live = row.status === 'running'
-          const extra = [live ? '' : dur(row.durationMs), modelName(row.model), row.effort].filter(p => p !== '').join(' · ')
-          const used = row.usage ?? ZERO
-          // La ligne principale n'affiche pas ses tokens : c'est le compteur de session, plus bas.
-          const spent = row.id !== MAIN && used.input + used.output > 0
-          // Les colonnes suivantes restent alignees malgre le decalage et le trait du sous-agent.
-          const lead = row.depth * 3 + (row.depth > 0 ? 2 : 0)
-          const pad = ' '.repeat(row.depth * 3 + 2)
-          const what = row.action === 'reflexion' || row.action === 'demarrage' ? 'réflexion…' : `${row.action} ${row.detail ?? ''}`.trim()
-
-          // Une seule ligne par tache, deux de plus tant qu'elle tourne : l'objectif, puis l'outil du moment.
-          return (
-            <Box key={row.id} flexDirection="column">
-              <Text wrap="truncate-end">
-                {' '.repeat(row.depth * 3)}
-                {row.depth > 0 && <Text dimColor>└ </Text>}
-                <Text color={look.color} bold>{look.icon} </Text>
-                <Text bold={live} dimColor={row.status === 'done'}>{label(row).padEnd(Math.max(6, 13 - lead))}</Text>
-                <Text color={look.color}>{look.text.padEnd(9)}</Text>
-                {spent && <Text color={CYAN}>{`${cell(used)}  `}</Text>}
-                <Text dimColor>{extra}</Text>
-              </Text>
-              {live && (
-                <Text wrap="truncate-end" dimColor>{pad}↳ {row.goal}</Text>
-              )}
-              {live && (
-                <Text wrap="truncate-end">
-                  <Text dimColor>{pad}</Text>
-                  <Text color={ORANGE}>▸ {what}</Text>
-                  <Text dimColor>{`  · étape ${row.steps}${(row.tools ?? 0) > 0 ? ` · ${row.tools} outil${row.tools === 1 ? '' : 's'}` : ''}`}</Text>
-                </Text>
-              )}
-            </Box>
-          )
-        })}
+        {shown.map(row => rowView({ Box, Text }, row, false))}
         {hidden > 0 && <Text dimColor>  +{hidden} autres</Text>}
         <Text wrap="truncate-end">
           <Text color={VIOLET} bold>◆ TOKENS</Text>
@@ -379,6 +442,43 @@ export const register: Register = on => {
           {more && <Text color={ORANGE} bold> ↓{fmt(project.output)}</Text>}
           {more && <Text dimColor> · {t.sessions + 1} sessions</Text>}
         </Text>
+      </Box>
+    )
+  })
+
+  on('command.run', { command: 'activite' }, async $ => {
+    const placed = await $.ui.open({ id: PANE, title: 'Activité' })
+
+    return { text: placed.isPlaced ? "Panneau d'activité ouvert." : "Ce terminal n'affiche pas de panneau ici." }
+  })
+
+  // Le panneau : tous les agents avec leur detail, puis le journal, le plus recent en haut.
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const { Box, Text } = $.ui.resolve(e)
+    const list = await read($, rows)
+    const log = await read($, journal)
+    const running = list.filter(r => r.status === 'running').length
+    const tools = log.filter(x => x.kind === 'tool').length
+    const failed = log.filter(x => x.kind === 'tool' && x.state === 'err').length
+    // Les lignes restantes apres l'en-tete et les agents : le journal s'adapte a la hauteur du panneau.
+    const used = 3 + list.reduce((n, r) => n + 1 + 1 + (r.status === 'running' ? 1 : 0), 0)
+    const room = Math.max(4, (e.viewport?.rows ?? 30) - used - 3)
+
+    return (
+      <Box flexDirection="column">
+        <Text wrap="truncate-end">
+          <Text color={BLUE} bold>◆ ACTIVITÉ</Text>
+          <Text dimColor>   {running} en cours · {tools} outil{tools > 1 ? 's' : ''}</Text>
+          {failed > 0 && <Text color="error">   ✖ {failed} en échec</Text>}
+        </Text>
+        {list.length === 0 && <Text dimColor>Aucune tâche pour l'instant.</Text>}
+        {list.map(row => rowView({ Box, Text }, row, true))}
+        <Text color={VIOLET} bold>◆ JOURNAL</Text>
+        {log.length === 0 && <Text dimColor>Rien pour l'instant.</Text>}
+        {log
+          .slice(-room)
+          .reverse()
+          .map(x => entryView({ Text }, x))}
       </Box>
     )
   })

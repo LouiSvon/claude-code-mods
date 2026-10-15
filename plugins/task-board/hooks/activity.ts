@@ -22,3 +22,19 @@ export const describe = (args: Record<string, unknown>): string => {
   if (text !== '') return one(text, 70)
   return s('path') !== '' ? tail(s('path')) : ''
 }
+
+// 14:03:09, en heure locale.
+export const clock = (at: number): string => {
+  const d = new Date(at)
+  const two = (n: number) => String(n).padStart(2, '0')
+  return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`
+}
+
+// 80ms, 1.2s, 2min05 : la duree d'un outil, plus fine que celle d'une tache.
+export const span = (ms: number | undefined): string => {
+  if (ms === undefined || !Number.isFinite(ms) || ms < 0) return ''
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`
+  const s = Math.round(ms / 1000)
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}min${String(s % 60).padStart(2, '0')}`
+}

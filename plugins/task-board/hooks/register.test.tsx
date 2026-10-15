@@ -141,6 +141,8 @@ const world = (on: any, opts: { root?: string; id?: string; files?: Files } = {}
   })
   on('turn.start', (_$: any, e: any) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
+  on('command.register', (_$: any, e: any) => ({ value: { command: e.name } }) as never)
+  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('session.compact', () => ({ messages: [{ role: 'user', text: 'resume', toolUses: [] }], usage: usageOf.compact }))
   on('turn.step', async function* (_$: any, e: any) {
     const u = usageOf[e.agentId ?? 'main']
@@ -314,4 +316,40 @@ test('une tache en cours montre son objectif et l outil du moment, une tache fin
   expect(after).toContain('4s')
   await done.unmount()
   void w
+})
+
+const pane = ($: never) =>
+  ($ as never as { ui: { mount: (a: never) => Promise<any> } }).ui.mount({ plugin: 'task-board', surface: 'terminal', component: 'Pane', requestId: 'activite', props: {} } as never)
+
+test('le panneau liste les agents et un journal : outils, cibles, durees, echecs', async ($, on) => {
+  world(on)
+  let n = 0
+  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
+  on('tool.call', (_$: any, e: any) => (e.tool === 'Bash' ? { deny: 'refuse' } : { ref: 'r', result: {}, text: '' }) as never)
+  await ($ as any).turn.start({ text: 'Optimise mes mods', turnId: 't' })
+  await spawn($, 'Lister les fichiers du dossier')
+  await ($ as any).tool.call({ tool: 'Read', file_path: '/Users/a/dev/demo/src/app.ts', agentId: 'a1', tool_use_id: `u${++n}` })
+  await ($ as any).tool.call({ tool: 'Bash', command: 'rm -rf /', agentId: 'a1', tool_use_id: `u${++n}` })
+
+  const ui = await pane($ as never)
+  const all = await texts(ui)
+  expect(all).toContain('ACTIVITÉ')
+  expect(all).toContain('2 outils')
+  expect(all).toContain('1 en échec')
+  expect(all).toContain('Optimise mes mods')
+  expect(all).toContain('lance Lister')
+  expect(all).toContain('Read')
+  expect(all).toContain('src/app.ts')
+  expect(all).toContain('Lister les fichiers du dossier')
+  // le plus recent en haut : la commande refusee precede la lecture
+  expect(all.indexOf('rm -rf')).toBeLessThan(all.indexOf('src/app.ts'))
+  await ui.unmount()
+})
+
+test('la commande /activite ouvre le panneau', async ($, on) => {
+  world(on)
+  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'terminal', isInteractive: true, source: 'startup' })
+  const out = await ($ as any).command.run({ command: 'activite', args: '', origin: { kind: 'user' } })
+
+  expect(JSON.stringify(out)).toContain('Panneau')
 })

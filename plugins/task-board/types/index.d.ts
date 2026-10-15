@@ -18,6 +18,19 @@ export type Row = {
   usage?: Totals
 }
 
+// Une ligne du journal d'activite (panneau) : un outil, un agent lance, une fin de tache, une demande.
+export type Entry = {
+  id: string
+  at: number
+  who: string
+  depth: number
+  kind: 'prompt' | 'agent' | 'tool' | 'end'
+  text: string
+  detail: string
+  state: 'run' | 'ok' | 'err'
+  ms?: number
+}
+
 // Compteur de la session et du projet ; `others` = les autres sessions du meme projet.
 export type Tally = {
   session: Totals
@@ -28,6 +41,6 @@ export type Tally = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'task-board': { rows: Row[]; tally: Tally }
+    'task-board': { rows: Row[]; tally: Tally; journal: Entry[] }
   }
 }
