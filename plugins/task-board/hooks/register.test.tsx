@@ -78,7 +78,7 @@ test('un sous-agent est decale sous la tache principale, un petit-agent encore p
   await ($ as any).agent.spawn({ prompt: 'p', description: 'Bravo', subagentType: 'Explore', parentAgentId: 'a1' } as never)
 
   const ui = await show($ as never)
-  expect((await ui.findAll({ type: 'Text', text: /└/ })).length).toBe(2)
+  expect((await ui.findAll({ type: 'Text', text: /^└ $/ })).length).toBe(2)
   await ui.unmount()
 })
 
@@ -137,6 +137,7 @@ const world = (on: any, opts: { root?: string; id?: string; files?: Files } = {}
   })
   on('turn.start', (_$: any, e: any) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
+  on('session.compact', () => ({ messages: [{ role: 'user', text: 'resume', toolUses: [] }], usage: usageOf.compact }))
   on('turn.step', async function* (_$: any, e: any) {
     const u = usageOf[e.agentId ?? 'main']
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: u ?? null }
@@ -245,4 +246,13 @@ test('hors dossier de projet (espace temporaire de l app) : session seule, rien 
   expect(all).toContain('↑40')
   expect(all).not.toContain('projet ')
   await ui.unmount()
+})
+
+test('la requete de resume d une compaction compte aussi', async ($, on) => {
+  const w = world(on)
+  await ($ as any).session.start({ cwd: '/Users/a/dev/demo', surface: 'terminal', isInteractive: true, source: 'startup' })
+  w.usageOf.compact = use(900, 80)
+  await ($ as any).session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'x', toolUses: [] }] })
+
+  expect(JSON.parse(w.files[`${DIR}/s1.json`])).toMatchObject({ input: 900, output: 80 })
 })

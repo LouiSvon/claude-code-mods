@@ -252,6 +252,23 @@ export const register: Register = on => {
     return result
   })
 
+  // Le resume de compaction est une requete a part, hors turn.step : sans ceci le compteur la rate.
+  on('session.compact', async ($, e, next) => {
+    const result = await next(e)
+    const spent = fromUsage('usage' in result ? result.usage : undefined)
+    if (spent.input + spent.output + spent.cache > 0) {
+      try {
+        await adopt($)
+        const t = await update($, tally, cur => ({ ...cur, session: add(cur.session, spent) }))
+        await save($, t.session)
+      } catch {
+        // idem
+      }
+    }
+
+    return result
+  })
+
   on('tool.call', async ($, e, next) => {
     const id = e.agentId ?? MAIN
     await update($, rows, patch(id, () => ({ action: e.tool })))
@@ -291,13 +308,13 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        <Box>
+        <Text wrap="truncate-end">
           <Text color={BLUE} bold>◆ TÂCHES</Text>
           {list.length === 0 && <Text dimColor>   aucune pour l'instant</Text>}
           {running > 0 && <Text color={LOOK.running.color} bold>   ● {running} en cours</Text>}
           {done > 0 && <Text color={LOOK.done.color}>   ✔ {done} terminé{done > 1 ? 's' : ''}</Text>}
           {failed > 0 && <Text color={LOOK.error.color}>   ✖ {failed} échec{failed > 1 ? 's' : ''}</Text>}
-        </Box>
+        </Text>
         {shown.map(row => {
           const look = LOOK[row.status]
           const extra = [
@@ -308,43 +325,41 @@ export const register: Register = on => {
           ]
             .filter(p => p !== '')
             .join(' · ')
-          const indent = row.depth * 3
           const used = row.usage ?? ZERO
+          const spent = used.input + used.output > 0
+          // Les colonnes suivantes restent alignees malgre le decalage et le trait du sous-agent.
+          const lead = row.depth * 3 + (row.depth > 0 ? 2 : 0)
 
+          // Une seule ligne par tache : trop etroit, elle se coupe au bord au lieu de se casser.
           return (
-            <Box key={row.id} paddingLeft={indent}>
+            <Text key={row.id} wrap="truncate-end">
+              {' '.repeat(row.depth * 3)}
               {row.depth > 0 && <Text dimColor>└ </Text>}
               <Text color={look.color} bold>{look.icon} </Text>
-              <Box width={Math.max(8, 16 - indent)}>
-                <Text bold={row.status === 'running'} dimColor={row.status === 'done'}>{label(row)}</Text>
-              </Box>
-              <Box width={11}><Text color={look.color}>{look.text}</Text></Box>
-              <Box width={15}>
-                <Text color={used.input + used.output > 0 ? CYAN : undefined} dimColor={used.input + used.output === 0}>
-                  {used.input + used.output > 0 ? cell(used) : '·'}
-                </Text>
-              </Box>
+              <Text bold={row.status === 'running'} dimColor={row.status === 'done'}>{label(row).padEnd(Math.max(6, 13 - lead))}</Text>
+              <Text color={look.color}>{look.text.padEnd(9)}</Text>
+              <Text color={spent ? CYAN : undefined} dimColor={!spent}>{(spent ? cell(used) : '·').padEnd(13)}</Text>
               <Text dimColor>{extra}</Text>
-            </Box>
+            </Text>
           )
         })}
         {hidden > 0 && <Text dimColor>  +{hidden} autres</Text>}
-        <Box>
+        <Text wrap="truncate-end">
           <Text color={VIOLET} bold>◆ TOKENS</Text>
           <Text dimColor>   session </Text>
           <Text color={CYAN} bold>↑{fmt(t.session.input)}</Text>
           <Text color={ORANGE} bold> ↓{fmt(t.session.output)}</Text>
           <Text dimColor> cache {fmt(t.session.cache)}</Text>
-          {t.project !== '' && (
-            <>
-              <Text dimColor>   │   projet </Text>
-              <Text color={VIOLET}>{t.project} </Text>
-              <Text color={CYAN} bold>↑{fmt(project.input)}</Text>
-              <Text color={ORANGE} bold> ↓{fmt(project.output)}</Text>
-              <Text dimColor> cache {fmt(project.cache)} · {t.sessions + 1} session{t.sessions > 0 ? 's' : ''}</Text>
-            </>
-          )}
-        </Box>
+        </Text>
+        {t.project !== '' && (
+          <Text wrap="truncate-end">
+            <Text dimColor>  └ projet </Text>
+            <Text color={VIOLET}>{short(t.project, 24)} </Text>
+            <Text color={CYAN} bold>↑{fmt(project.input)}</Text>
+            <Text color={ORANGE} bold> ↓{fmt(project.output)}</Text>
+            <Text dimColor> cache {fmt(project.cache)} · {t.sessions + 1} session{t.sessions > 0 ? 's' : ''}</Text>
+          </Text>
+        )}
       </Box>
     )
   })

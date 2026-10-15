@@ -29,11 +29,11 @@ Barre de tâches au-dessus de la saisie de Claude Code : un mot, un état, un mo
 - **Décalage** : `└` marque un sous-agent, décalé de trois colonnes par niveau.
 - **Tokens de la ligne** : `↑` entrée neuve (non cache + écriture en cache), `↓` sortie, pour ce tour. `·` tant que l'agent n'a rien dépensé.
 - **Fin de ligne** : durée une fois terminé, modèle, effort, puis l'outil en cours tant que la tâche tourne.
-- **Capacité** : cinq lignes au plus, `+N autres` au-delà.
+- **Capacité** : cinq lignes au plus, `+N autres` au-delà. Une ligne trop longue pour le terminal est coupée au bord (`…`), jamais cassée sur la suivante.
 
 ## Compteur de tokens
 
-La ligne `◆ TOKENS` cumule chaque réponse du modèle, agent principal et sous-agents ensemble, y compris celles d'un tour interrompu ensuite. `cache` est la lecture du cache de prompt, comptée à part : elle se chiffre en millions et masquerait le reste.
+La ligne `◆ TOKENS` cumule chaque réponse du modèle (agent principal et sous-agents ensemble, y compris celles d'un tour interrompu ensuite) et la requête de résumé d'une compaction. `cache` est la lecture du cache de prompt, comptée à part : elle se chiffre en millions et masquerait le reste.
 
 - **Session** : repart de son fichier à la reprise (`--resume`), de zéro après `/clear`.
 - **Projet** : somme de toutes les sessions du même dossier (racine complète, deux dépôts du même nom restent distincts). Les autres sessions sont relues à chaque fin de tour.
@@ -49,4 +49,4 @@ Le seul fichier écrit est le compteur, un par session : `~/.claude/mod-tokens/<
 claude plugin test .
 ```
 
-Seize tests : les cinq de la barre (attente, terminé puis en cours, tâche principale visible, décalage, agent relancé) et onze sur les tokens (formatage, cumul par agent, total projet avec fichier abîmé ignoré, reprise, `/clear`, tour interrompu, hors projet). Disque et environnement sont simulés : aucun test n'écrit dans ton `~/.claude`.
+Dix-sept tests : les cinq de la barre (attente, terminé puis en cours, tâche principale visible, décalage, agent relancé) et douze sur les tokens (formatage, cumul par agent, total projet avec fichier abîmé ignoré, reprise, `/clear`, tour interrompu, compaction, hors projet). Disque et environnement sont simulés : aucun test n'écrit dans ton `~/.claude`.

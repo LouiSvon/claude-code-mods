@@ -79,7 +79,7 @@ Chaque mod est un module de hooks, sans dépendance. Aucun n'envoie de donnée h
 
 - **Le total projet est un fichier par session, sans verrou** : il se met à jour à la fin de chaque tour, pas en direct. Un dossier de plusieurs centaines de sessions ralentit un peu la relecture.
 - **Le prix `≈ $`** est l'équivalent au tarif API, pas un débit sur ton abonnement.
-- **Le rendu coloré des compteurs n'est pas confirmé dans l'app de bureau** : il est validé par les tests et par une session réelle (fichier écrit, valeurs justes), pas à l'écran.
+- **Rendu vérifié dans le terminal, pas dans l'app de bureau** : alignement et coupure à la largeur (`bodyColumns`) contrôlés dans une vraie session `claude`. Les couleurs et la bande dans l'app de bureau restent à confirmer à l'écran.
 - **La ligne d'état est du texte simple.** L'app de bureau ne dessine pas d'arbre coloré sous la saisie : `statusline-app` utilise donc la ligne de statut du moteur, sans couleur.
 - **Le décalage sur trois niveaux** (agent, sous-agent, petit-agent) est testé avec des événements simulés, pas avec de vrais agents imbriqués.
 - **Les types** viennent du moteur : le dossier `.claude-plugin/types/` est généré au premier chargement d'un mod et n'est pas versionné. `tsc -p plugins/<mod>` ne fonctionne qu'après ce premier chargement.
@@ -89,7 +89,7 @@ Chaque mod est un module de hooks, sans dépendance. Aucun n'envoie de donnée h
 
 ```bash
 claude plugin validate plugins/task-board
-claude plugin test plugins/task-board        # 16 tests
+claude plugin test plugins/task-board        # 17 tests
 claude plugin test plugins/statusline-app    # 5 tests
 ```
 
